@@ -1,11 +1,11 @@
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, DecimalException
 from typing import Protocol
 
 import requests
 from django.conf import settings
 
-from routing.exceptions import LocationNotFoundError
+from routing.exceptions import LocationNotFoundError, RoutingProviderError
 
 
 @dataclass(frozen=True)
@@ -33,35 +33,48 @@ class CensusGeocoder:
         self.timeout = timeout or getattr(settings, "CENSUS_GEOCODER_TIMEOUT", 10)
 
     def geocode_one(self, query: str) -> GeocodedLocation | None:
-        response = requests.get(
-            f"{settings.CENSUS_GEOCODER_BASE_URL}/locations/onelineaddress",
-            params={
-                "address": query,
-                "benchmark": "Public_AR_Current",
-                "format": "json",
-            },
-            timeout=self.timeout,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        matches = payload.get("result", {}).get("addressMatches", [])
-        if not matches:
-            return None
+        try:
+            response = requests.get(
+                f"{settings.CENSUS_GEOCODER_BASE_URL}/locations/onelineaddress",
+                params={
+                    "address": query,
+                    "benchmark": "Public_AR_Current",
+                    "format": "json",
+                },
+                timeout=self.timeout,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            matches = payload.get("result", {}).get("addressMatches", [])
+            if not matches:
+                return None
 
-        coordinates = matches[0]["coordinates"]
-        return GeocodedLocation(
-            query=query,
-            latitude=Decimal(str(coordinates["y"])),
-            longitude=Decimal(str(coordinates["x"])),
-            provider=self.provider,
-            raw_response=matches[0],
-        )
+            match = matches[0]
+            coordinates = match["coordinates"]
+            return GeocodedLocation(
+                query=query,
+                latitude=Decimal(str(coordinates["y"])),
+                longitude=Decimal(str(coordinates["x"])),
+                provider=self.provider,
+                raw_response=match,
+            )
+        except (
+            KeyError,
+            TypeError,
+            ValueError,
+            DecimalException,
+            requests.RequestException,
+        ) as exc:
+            raise RoutingProviderError("Census geocoder failed") from exc
 
 
 def resolve_location(query: str, provider: SingleGeocoder | None = None) -> GeocodedLocation:
     from fuel.models import LocationCache
 
     normalized_query = normalize_query(query)
+    if not normalized_query:
+        raise LocationNotFoundError("Location query cannot be blank")
+
     cached = LocationCache.objects.filter(query=normalized_query).first()
     if cached:
         return GeocodedLocation(
@@ -86,4 +99,10 @@ def resolve_location(query: str, provider: SingleGeocoder | None = None) -> Geoc
             "raw_response": location.raw_response,
         },
     )
-    return location
+    return GeocodedLocation(
+        query=normalized_query,
+        latitude=location.latitude,
+        longitude=location.longitude,
+        provider=location.provider,
+        raw_response=location.raw_response,
+    )

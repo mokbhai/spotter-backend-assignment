@@ -2,6 +2,7 @@ from decimal import Decimal
 
 import pytest
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import IntegrityError
 
 from fuel.models import FuelStation, LocationCache
@@ -372,3 +373,20 @@ def test_import_command_loads_csv_without_live_geocoding(tmp_path, capsys):
     output = capsys.readouterr().out
     assert "total=1" in output
     assert "Skipped station geocoding" in output
+
+
+@pytest.mark.django_db
+def test_import_command_without_skip_geocoding_fails_after_import(tmp_path, capsys):
+    path = tmp_path / "fuel.csv"
+    path.write_text(
+        "OPIS Truckstop ID,Truckstop Name,Address,City,State,Rack ID,Retail Price\n"
+        "79,DELAWARE TRUCK PLAZA,US-13 & US-40,New Castle,DE,243,3.249\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CommandError, match="Station geocoding is not implemented yet"):
+        call_command("import_fuel_prices", str(path))
+
+    assert FuelStation.objects.filter(opis_truckstop_id="79").exists()
+    output = capsys.readouterr().out
+    assert "total=1" in output

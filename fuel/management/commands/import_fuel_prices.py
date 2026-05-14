@@ -1,4 +1,4 @@
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from routing.services.fuel_import import import_fuel_price_rows, parse_fuel_price_csv
 
@@ -30,6 +30,6 @@ class Command(BaseCommand):
             self.stdout.write("Skipped station geocoding.")
             return
 
-        self.stdout.write(
+        raise CommandError(
             "Station geocoding is not implemented yet. Re-run with --skip-geocoding."
         )
