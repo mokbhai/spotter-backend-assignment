@@ -161,7 +161,7 @@ def test_build_census_batch_input_includes_station_id_and_address_parts():
 
 def test_parse_census_batch_response_extracts_coordinates():
     results = parse_census_batch_response(
-        '"123","I-35, Austin, TX","Match","Exact","I-35, Austin, TX","-97.743100,30.267200","1","L"\n'
+        '"123","I-35, Austin, TX","Match","Exact","I-35, Austin, TX","-97.743100,30.267200","123456789012345","L"\n'
     )
 
     assert results == [
@@ -170,7 +170,7 @@ def test_parse_census_batch_response_extracts_coordinates():
             matched=True,
             latitude=Decimal("30.267200"),
             longitude=Decimal("-97.743100"),
-            score=Decimal("1"),
+            score=None,
         )
     ]
 
@@ -232,7 +232,7 @@ def test_apply_station_geocoding_results_marks_matched_and_unmatched():
                 matched=True,
                 latitude=Decimal("30.267200"),
                 longitude=Decimal("-97.743100"),
-                score=Decimal("1"),
+                score=None,
             ),
             StationGeocodeResult(
                 station_id=str(unmatched.id),
@@ -250,7 +250,7 @@ def test_apply_station_geocoding_results_marks_matched_and_unmatched():
     assert summary.failed == 0
     assert matched.latitude == Decimal("30.267200")
     assert matched.longitude == Decimal("-97.743100")
-    assert matched.geocoding_score == Decimal("1.000")
+    assert matched.geocoding_score is None
     assert matched.geocoding_status == FuelStation.GeocodingStatus.MATCHED
     assert matched.is_active is True
     assert unmatched.latitude is None
@@ -315,7 +315,7 @@ def test_census_batch_station_geocoder_posts_and_parses(monkeypatch, settings):
             matched=True,
             latitude=Decimal("30.267200"),
             longitude=Decimal("-97.743100"),
-            score=Decimal("1"),
+            score=None,
         )
     ]
     assert calls == [

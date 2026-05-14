@@ -396,7 +396,7 @@ def test_import_command_can_apply_batch_geocoding(tmp_path, capsys, monkeypatch)
                     matched=True,
                     latitude=Decimal("39.662000"),
                     longitude=Decimal("-75.566000"),
-                    score=Decimal("1"),
+                    score=None,
                 )
             ]
 
@@ -414,6 +414,7 @@ def test_import_command_can_apply_batch_geocoding(tmp_path, capsys, monkeypatch)
     assert station.geocoding_status == FuelStation.GeocodingStatus.MATCHED
     assert station.latitude == Decimal("39.662000")
     assert station.longitude == Decimal("-75.566000")
+    assert station.geocoding_score is None
     output = capsys.readouterr().out
     assert "total=1" in output
     assert "Station geocoding summary: matched=1 unmatched=0 failed=0" in output

@@ -126,14 +126,13 @@ def parse_census_batch_response(response_text: str) -> list[StationGeocodeResult
 
             longitude = Decimal(coordinate_parts[0])
             latitude = Decimal(coordinate_parts[1])
-            score = Decimal(row[6]) if len(row) > 6 and row[6] else None
             results.append(
                 StationGeocodeResult(
                     station_id=station_id,
                     matched=True,
                     latitude=latitude,
                     longitude=longitude,
-                    score=score,
+                    score=None,
                 )
             )
         return results
