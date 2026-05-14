@@ -61,6 +61,46 @@ def test_fuel_station_source_row_hash_is_unique():
 
 
 @pytest.mark.django_db
+def test_fuel_station_preserves_source_retail_price_precision():
+    retail_price = Decimal("3.00733333")
+    station = FuelStation(
+        opis_truckstop_id="20",
+        name="PILOT TRAVEL CENTER #1243",
+        address="I-8, EXIT 119 & SR-85",
+        city="Gila Bend",
+        state="AZ",
+        rack_id="930",
+        retail_price=retail_price,
+        source_row_hash="precise-price",
+    )
+
+    station.full_clean()
+    station.save()
+    station.refresh_from_db()
+
+    assert station.retail_price == retail_price
+
+
+@pytest.mark.django_db
+def test_fuel_station_uses_import_default_state():
+    station = FuelStation.objects.create(
+        opis_truckstop_id="20",
+        name="PILOT TRAVEL CENTER #1243",
+        address="I-8, EXIT 119 & SR-85",
+        city="Gila Bend",
+        state="AZ",
+        rack_id="930",
+        retail_price=Decimal("3.899"),
+        source_row_hash="default-state",
+    )
+
+    assert station.is_active is False
+    assert station.geocoding_status == FuelStation.GeocodingStatus.PENDING
+    assert station.latitude is None
+    assert station.longitude is None
+
+
+@pytest.mark.django_db
 def test_location_cache_query_is_unique():
     LocationCache.objects.create(
         query="austin, tx",

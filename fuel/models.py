@@ -14,7 +14,7 @@ class FuelStation(models.Model):
     city = models.CharField(max_length=128)
     state = models.CharField(max_length=8)
     rack_id = models.CharField(max_length=32)
-    retail_price = models.DecimalField(max_digits=8, decimal_places=4)
+    retail_price = models.DecimalField(max_digits=10, decimal_places=8)
     latitude = models.DecimalField(
         max_digits=9,
         decimal_places=6,

@@ -37,7 +37,7 @@ class Migration(migrations.Migration):
                 ('city', models.CharField(max_length=128)),
                 ('state', models.CharField(max_length=8)),
                 ('rack_id', models.CharField(max_length=32)),
-                ('retail_price', models.DecimalField(decimal_places=4, max_digits=8)),
+                ('retail_price', models.DecimalField(decimal_places=8, max_digits=10)),
                 ('latitude', models.DecimalField(blank=True, decimal_places=6, max_digits=9, null=True)),
                 ('longitude', models.DecimalField(blank=True, decimal_places=6, max_digits=9, null=True)),
                 ('geocoding_status', models.CharField(choices=[('pending', 'Pending'), ('matched', 'Matched'), ('unmatched', 'Unmatched'), ('failed', 'Failed')], default='pending', max_length=16)),
