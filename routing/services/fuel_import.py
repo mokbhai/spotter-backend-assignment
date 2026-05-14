@@ -77,15 +77,15 @@ def import_fuel_price_rows(rows: Iterable[FuelPriceRow]) -> FuelImportSummary:
             seen_opis_ids.add(row.opis_truckstop_id)
 
             _, was_created = FuelStation.objects.update_or_create(
-                source_row_hash=row_hash(row),
+                opis_truckstop_id=row.opis_truckstop_id,
+                name=row.name,
+                address=row.address,
+                city=row.city,
+                state=row.state,
+                rack_id=row.rack_id,
                 defaults={
-                    "opis_truckstop_id": row.opis_truckstop_id,
-                    "name": row.name,
-                    "address": row.address,
-                    "city": row.city,
-                    "state": row.state,
-                    "rack_id": row.rack_id,
                     "retail_price": row.retail_price,
+                    "source_row_hash": row_hash(row),
                 },
             )
 

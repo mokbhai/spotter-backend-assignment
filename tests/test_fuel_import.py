@@ -210,6 +210,66 @@ def test_import_fuel_price_rows_counts_duplicate_opis_ids():
 
 
 @pytest.mark.django_db
+def test_import_fuel_price_rows_updates_existing_station_when_price_changes():
+    original = FuelPriceRow(
+        "79",
+        "DELAWARE TRUCK PLAZA",
+        "US-13 & US-40",
+        "New Castle",
+        "DE",
+        "243",
+        Decimal("3.249"),
+    )
+    changed = FuelPriceRow(
+        "79",
+        "DELAWARE TRUCK PLAZA",
+        "US-13 & US-40",
+        "New Castle",
+        "DE",
+        "243",
+        Decimal("3.349"),
+    )
+
+    import_fuel_price_rows([original])
+    station = FuelStation.objects.get()
+    original_hash = station.source_row_hash
+    station.geocoding_status = FuelStation.GeocodingStatus.MATCHED
+    station.latitude = Decimal("39.662000")
+    station.longitude = Decimal("-75.566000")
+    station.geocoding_score = Decimal("100.000")
+    station.is_active = True
+    station.save()
+
+    summary = import_fuel_price_rows([changed])
+    station.refresh_from_db()
+
+    assert summary.created == 0
+    assert summary.updated == 1
+    assert FuelStation.objects.count() == 1
+    assert station.retail_price == Decimal("3.349")
+    assert station.source_row_hash != original_hash
+    assert station.source_row_hash == row_hash(changed)
+    assert station.geocoding_status == FuelStation.GeocodingStatus.MATCHED
+    assert station.latitude == Decimal("39.662000")
+    assert station.longitude == Decimal("-75.566000")
+    assert station.geocoding_score == Decimal("100.000")
+    assert station.is_active is True
+
+
+@pytest.mark.django_db
+def test_import_fuel_price_rows_handles_exact_duplicates_in_same_batch():
+    row = FuelPriceRow("79", "A", "Addr", "City", "DE", "243", Decimal("3.249"))
+
+    summary = import_fuel_price_rows([row, row])
+
+    assert summary.total_rows == 2
+    assert summary.created == 1
+    assert summary.updated == 1
+    assert summary.duplicate_opis_ids == 1
+    assert FuelStation.objects.count() == 1
+
+
+@pytest.mark.django_db
 def test_import_fuel_price_rows_rolls_back_batch_on_error(monkeypatch):
     rows = [
         FuelPriceRow("91", "FIRST", "A", "City", "TX", "1", Decimal("3.100")),
