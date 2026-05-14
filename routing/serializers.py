@@ -1,7 +1,15 @@
 from collections.abc import Mapping
 from decimal import Decimal
 
+from django.conf import settings
 from rest_framework import serializers
+
+
+LOCATION_QUERY_MAX_LENGTH = 255
+
+
+def _decimal_setting(name):
+    return Decimal(str(getattr(settings, name))).quantize(Decimal("0.01"))
 
 
 class CoordinateSerializer(serializers.Serializer):
@@ -38,6 +46,7 @@ class LocationField(serializers.Field):
     default_error_messages = {
         "blank": "Location must not be blank.",
         "invalid": "Location must be a string or coordinate object.",
+        "max_length": f"Location must be no more than {LOCATION_QUERY_MAX_LENGTH} characters.",
     }
 
     def to_internal_value(self, data):
@@ -45,6 +54,8 @@ class LocationField(serializers.Field):
             value = data.strip()
             if not value:
                 self.fail("blank")
+            if len(" ".join(value.split())) > LOCATION_QUERY_MAX_LENGTH:
+                self.fail("max_length")
             return value
 
         if isinstance(data, Mapping):
@@ -62,11 +73,22 @@ class LocationField(serializers.Field):
 class FuelPlanRequestSerializer(serializers.Serializer):
     start = LocationField()
     destination = LocationField()
-    corridor_miles = serializers.IntegerField(default=10, min_value=1, max_value=25)
-    max_range_miles = serializers.IntegerField(default=500, min_value=1, max_value=500)
-    miles_per_gallon = serializers.DecimalField(
-        default=Decimal("10.00"),
-        max_digits=6,
-        decimal_places=2,
-        min_value=Decimal("1"),
-    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["corridor_miles"] = serializers.IntegerField(
+            default=settings.DEFAULT_ROUTE_CORRIDOR_MILES,
+            min_value=1,
+            max_value=settings.MAX_ROUTE_CORRIDOR_MILES,
+        )
+        self.fields["max_range_miles"] = serializers.IntegerField(
+            default=settings.DEFAULT_MAX_RANGE_MILES,
+            min_value=1,
+            max_value=settings.DEFAULT_MAX_RANGE_MILES,
+        )
+        self.fields["miles_per_gallon"] = serializers.DecimalField(
+            default=_decimal_setting("DEFAULT_MILES_PER_GALLON"),
+            max_digits=6,
+            decimal_places=2,
+            min_value=Decimal("1"),
+        )
