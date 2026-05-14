@@ -88,18 +88,20 @@ def test_optimizer_warns_when_first_station_is_not_near_origin():
 
 
 def test_optimizer_uses_cheapest_reachable_when_no_cheaper_station_is_ahead():
-    expensive = station(1, price_per_gallon=Decimal("5.0000"), route_mile=0)
-    mid = station(2, name="Mid", price_per_gallon=Decimal("4.0000"), route_mile=100)
-    cheap = station(3, name="Later", price_per_gallon=Decimal("4.5000"), route_mile=200)
+    current = station(1, price_per_gallon=Decimal("4.0000"), route_mile=100)
+    close = station(2, name="Close", price_per_gallon=Decimal("4.5000"), route_mile=180)
+    cheapest = station(3, name="Cheapest", price_per_gallon=Decimal("4.2000"), route_mile=300)
 
     plan = build_fuel_plan(
-        [expensive, mid, cheap],
-        route_distance_miles=450,
+        [current, close, cheapest],
+        route_distance_miles=800,
         max_range_miles=500,
         miles_per_gallon=Decimal("10"),
     )
 
-    assert plan.stops[1].station_id == mid.station_id
+    assert plan.stops[0].station_id == current.station_id
+    assert plan.stops[0].gallons == Decimal("20.00")
+    assert plan.stops[1].station_id == cheapest.station_id
 
 
 def test_optimizer_rounds_money_half_up():
@@ -119,4 +121,3 @@ def test_optimizer_rounds_money_half_up():
     assert plan.total_gallons == Decimal("1.00")
     assert plan.stops[0].cost == Decimal("1.01")
     assert plan.total_cost == Decimal("1.01")
-
