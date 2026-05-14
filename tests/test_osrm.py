@@ -122,7 +122,11 @@ def test_osrm_client_maps_malformed_protocol_payload_to_provider_error(monkeypat
         {},
         {"type": "Point", "coordinates": [-97.7431, 30.2672]},
         {"type": "LineString", "coordinates": []},
+        {"type": "LineString", "coordinates": [[-97.7431, 30.2672]]},
         {"type": "LineString", "coordinates": "not-coordinates"},
+        {"type": "LineString", "coordinates": ["not-a-position", [-95.3698, 29.7604]]},
+        {"type": "LineString", "coordinates": [[None, 30.2672], [-95.3698, 29.7604]]},
+        {"type": "LineString", "coordinates": [["-97.7431", 30.2672], [-95.3698, 29.7604]]},
     ],
 )
 def test_osrm_client_rejects_malformed_geometry(monkeypatch, geometry):
@@ -148,3 +152,34 @@ def test_osrm_client_rejects_malformed_geometry(monkeypatch, geometry):
             Decimal("29.7604"),
             Decimal("-95.3698"),
         )
+
+
+def test_osrm_client_allows_altitude_coordinate(monkeypatch):
+    geometry = {
+        "type": "LineString",
+        "coordinates": [[-97.7431, 30.2672, 149], [-95.3698, 29.7604, 24]],
+    }
+
+    monkeypatch.setattr(
+        "routing.services.osrm.requests.get",
+        lambda *args, **kwargs: FakeResponse(
+            {
+                "code": "Ok",
+                "routes": [
+                    {
+                        "distance": 1609.344,
+                        "geometry": geometry,
+                    }
+                ],
+            }
+        ),
+    )
+
+    route = OSRMClient(base_url="https://osrm.example.test").route(
+        Decimal("30.2672"),
+        Decimal("-97.7431"),
+        Decimal("29.7604"),
+        Decimal("-95.3698"),
+    )
+
+    assert route.geometry == geometry

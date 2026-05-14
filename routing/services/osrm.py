@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from numbers import Real
 
 import requests
 from django.conf import settings
@@ -70,6 +71,18 @@ class OSRMClient:
             not isinstance(geometry, dict)
             or geometry.get("type") != "LineString"
             or not isinstance(coordinates, list)
-            or not coordinates
+            or len(coordinates) < 2
         ):
             raise RoutingProviderError("Route calculation failed.")
+
+        for position in coordinates:
+            if (
+                not isinstance(position, (list, tuple))
+                or len(position) < 2
+                or not self._is_numeric_coordinate(position[0])
+                or not self._is_numeric_coordinate(position[1])
+            ):
+                raise RoutingProviderError("Route calculation failed.")
+
+    def _is_numeric_coordinate(self, value):
+        return isinstance(value, Real) and not isinstance(value, bool)
