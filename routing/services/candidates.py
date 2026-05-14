@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from fuel.models import FuelStation
 from routing.services.geometry import (
+    cumulative_route_miles,
     expanded_bounding_box,
     project_point_to_route,
     route_points,
@@ -19,6 +20,8 @@ class CandidateStation:
 def find_candidate_stations(route_geometry, corridor_miles):
     points = route_points(route_geometry)
     min_lat, max_lat, min_lng, max_lng = expanded_bounding_box(points, corridor_miles)
+    route_miles = cumulative_route_miles(points)
+    corridor_miles = float(corridor_miles)
     candidates = []
 
     stations = FuelStation.objects.filter(
@@ -36,6 +39,7 @@ def find_candidate_stations(route_geometry, corridor_miles):
             float(station.latitude),
             float(station.longitude),
             points,
+            route_miles=route_miles,
         )
         if projection.distance_to_route_miles <= corridor_miles:
             candidates.append(
@@ -46,4 +50,12 @@ def find_candidate_stations(route_geometry, corridor_miles):
                 )
             )
 
-    return sorted(candidates, key=lambda candidate: candidate.route_mile)
+    return sorted(
+        candidates,
+        key=lambda candidate: (
+            candidate.route_mile,
+            candidate.distance_to_route_miles,
+            candidate.station.retail_price,
+            candidate.station.pk,
+        ),
+    )

@@ -6,6 +6,7 @@ from fuel.models import FuelStation
 from routing.services.candidates import find_candidate_stations
 from routing.services.geometry import (
     cumulative_route_miles,
+    expanded_bounding_box,
     haversine_miles,
     project_point_to_route,
     route_points,
@@ -18,6 +19,7 @@ def create_station(
     latitude,
     longitude,
     is_active=True,
+    retail_price=Decimal("3.499"),
     source_row_hash=None,
 ):
     return FuelStation.objects.create(
@@ -27,7 +29,7 @@ def create_station(
         city="Austin",
         state="TX",
         rack_id="100",
-        retail_price=Decimal("3.499"),
+        retail_price=retail_price,
         latitude=Decimal(str(latitude)) if latitude is not None else None,
         longitude=Decimal(str(longitude)) if longitude is not None else None,
         geocoding_status=FuelStation.GeocodingStatus.MATCHED,
@@ -47,6 +49,50 @@ def test_route_points_rejects_invalid_geometry():
         route_points({"type": "Point", "coordinates": [-97.0, 30.0]})
 
 
+@pytest.mark.parametrize(
+    "coordinate",
+    [
+        [float("nan"), 30.0],
+        [-97.0, float("nan")],
+        [float("inf"), 30.0],
+        [-97.0, float("-inf")],
+    ],
+)
+def test_route_points_rejects_non_finite_coordinates(coordinate):
+    with pytest.raises(ValueError):
+        route_points(
+            {
+                "type": "LineString",
+                "coordinates": [[-97.0, 30.0], coordinate],
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "coordinate",
+    [
+        [-181.0, 30.0],
+        [181.0, 30.0],
+        [-97.0, -91.0],
+        [-97.0, 91.0],
+    ],
+)
+def test_route_points_rejects_out_of_range_coordinates(coordinate):
+    with pytest.raises(ValueError):
+        route_points(
+            {
+                "type": "LineString",
+                "coordinates": [[-97.0, 30.0], coordinate],
+            }
+        )
+
+
+@pytest.mark.parametrize("corridor_miles", [-1, float("nan"), float("inf")])
+def test_expanded_bounding_box_rejects_invalid_corridor(corridor_miles):
+    with pytest.raises(ValueError):
+        expanded_bounding_box([(30.0, -97.0), (30.5, -97.0)], corridor_miles)
+
+
 def test_cumulative_route_miles_starts_at_zero():
     totals = cumulative_route_miles([(30.0, -97.0), (30.0, -98.0), (31.0, -98.0)])
 
@@ -62,6 +108,16 @@ def test_project_point_to_route_finds_nearest_segment():
 
     assert projection.distance_to_route_miles == pytest.approx(0, abs=0.5)
     assert projection.route_mile > 20
+
+
+def test_project_point_to_route_uses_cumulative_route_mileage_basis():
+    points = [(60.0, 0.0), (60.0, -90.0)]
+    total_route_miles = cumulative_route_miles(points)[-1]
+
+    projection = project_point_to_route(60.0, -45.0, points)
+
+    assert projection.distance_to_route_miles == pytest.approx(0, abs=1)
+    assert projection.route_mile == pytest.approx(total_route_miles / 2, rel=0.01)
 
 
 @pytest.mark.django_db
@@ -114,3 +170,30 @@ def test_find_candidate_stations_sorts_candidates_by_route_mile():
 
     assert [candidate.station.id for candidate in candidates] == [earlier.id, later.id]
     assert candidates[0].route_mile < candidates[1].route_mile
+
+
+@pytest.mark.django_db
+def test_find_candidate_stations_uses_deterministic_tie_breakers():
+    high_price = create_station(
+        name="aaa-high-price",
+        latitude=30.30,
+        longitude=-97.7431,
+        retail_price=Decimal("3.999"),
+    )
+    low_price = create_station(
+        name="zzz-low-price",
+        latitude=30.30,
+        longitude=-97.7431,
+        retail_price=Decimal("2.999"),
+    )
+    route_geometry = {
+        "type": "LineString",
+        "coordinates": [[-97.7431, 30.25], [-97.7431, 30.5]],
+    }
+
+    candidates = find_candidate_stations(route_geometry, corridor_miles=5)
+
+    assert [candidate.station.id for candidate in candidates] == [
+        low_price.id,
+        high_price.id,
+    ]
