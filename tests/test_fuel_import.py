@@ -198,7 +198,7 @@ def test_import_fuel_price_rows_is_idempotent():
 def test_import_fuel_price_rows_counts_duplicate_opis_ids():
     rows = [
         FuelPriceRow("20", "PILOT A", "I-8", "Gila Bend", "AZ", "930", Decimal("3.899")),
-        FuelPriceRow("20", "PILOT B", "I-8", "Gila Bend", "AZ", "930", Decimal("3.899")),
+        FuelPriceRow("20", "PILOT B", "I-10", "Gila Bend", "AZ", "931", Decimal("3.899")),
     ]
 
     summary = import_fuel_price_rows(rows)
@@ -207,6 +207,53 @@ def test_import_fuel_price_rows_counts_duplicate_opis_ids():
     assert summary.created == 2
     assert summary.duplicate_opis_ids == 1
     assert FuelStation.objects.filter(opis_truckstop_id="20").count() == 2
+
+
+@pytest.mark.django_db
+def test_import_fuel_price_rows_updates_existing_station_when_name_changes():
+    original = FuelPriceRow(
+        "79",
+        "DELAWARE TRUCK PLAZA",
+        "US-13 & US-40",
+        "New Castle",
+        "DE",
+        "243",
+        Decimal("3.249"),
+    )
+    renamed = FuelPriceRow(
+        "79",
+        "DELAWARE PLAZA",
+        "US-13 & US-40",
+        "New Castle",
+        "DE",
+        "243",
+        Decimal("3.249"),
+    )
+
+    import_fuel_price_rows([original])
+    station = FuelStation.objects.get()
+    original_hash = station.source_row_hash
+    station.geocoding_status = FuelStation.GeocodingStatus.MATCHED
+    station.latitude = Decimal("39.662000")
+    station.longitude = Decimal("-75.566000")
+    station.geocoding_score = Decimal("100.000")
+    station.is_active = True
+    station.save()
+
+    summary = import_fuel_price_rows([renamed])
+    station.refresh_from_db()
+
+    assert summary.created == 0
+    assert summary.updated == 1
+    assert FuelStation.objects.count() == 1
+    assert station.name == "DELAWARE PLAZA"
+    assert station.source_row_hash != original_hash
+    assert station.source_row_hash == row_hash(renamed)
+    assert station.geocoding_status == FuelStation.GeocodingStatus.MATCHED
+    assert station.latitude == Decimal("39.662000")
+    assert station.longitude == Decimal("-75.566000")
+    assert station.geocoding_score == Decimal("100.000")
+    assert station.is_active is True
 
 
 @pytest.mark.django_db
@@ -264,7 +311,7 @@ def test_import_fuel_price_rows_handles_exact_duplicates_in_same_batch():
 
     assert summary.total_rows == 2
     assert summary.created == 1
-    assert summary.updated == 1
+    assert summary.updated == 0
     assert summary.duplicate_opis_ids == 1
     assert FuelStation.objects.count() == 1
 

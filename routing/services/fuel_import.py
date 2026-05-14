@@ -26,8 +26,32 @@ class FuelImportSummary:
     duplicate_opis_ids: int
 
 
+StationIdentity = tuple[str, str, str, str, str]
+
+
 def normalize_text(value: str) -> str:
     return " ".join((value or "").strip().split())
+
+
+def station_identity(row: FuelPriceRow) -> StationIdentity:
+    return (
+        row.opis_truckstop_id,
+        row.address,
+        row.city,
+        row.state,
+        row.rack_id,
+    )
+
+
+def station_identity_lookup(identity: StationIdentity) -> dict[str, str]:
+    opis_truckstop_id, address, city, state, rack_id = identity
+    return {
+        "opis_truckstop_id": opis_truckstop_id,
+        "address": address,
+        "city": city,
+        "state": state,
+        "rack_id": rack_id,
+    }
 
 
 def row_hash(row: FuelPriceRow) -> str:
@@ -63,27 +87,32 @@ def import_fuel_price_rows(rows: Iterable[FuelPriceRow]) -> FuelImportSummary:
     from django.db import transaction
     from fuel.models import FuelStation
 
+    rows = list(rows)
     total_rows = 0
     created = 0
     updated = 0
     duplicate_opis_ids = 0
     seen_opis_ids: set[str] = set()
+    counted_updated_identities: set[StationIdentity] = set()
 
     with transaction.atomic():
+        existing_identities = {
+            identity
+            for identity in {station_identity(row) for row in rows}
+            if FuelStation.objects.filter(**station_identity_lookup(identity)).exists()
+        }
+
         for row in rows:
+            identity = station_identity(row)
             total_rows += 1
             if row.opis_truckstop_id in seen_opis_ids:
                 duplicate_opis_ids += 1
             seen_opis_ids.add(row.opis_truckstop_id)
 
             _, was_created = FuelStation.objects.update_or_create(
-                opis_truckstop_id=row.opis_truckstop_id,
-                name=row.name,
-                address=row.address,
-                city=row.city,
-                state=row.state,
-                rack_id=row.rack_id,
+                **station_identity_lookup(identity),
                 defaults={
+                    "name": row.name,
                     "retail_price": row.retail_price,
                     "source_row_hash": row_hash(row),
                 },
@@ -91,8 +120,9 @@ def import_fuel_price_rows(rows: Iterable[FuelPriceRow]) -> FuelImportSummary:
 
             if was_created:
                 created += 1
-            else:
+            elif identity in existing_identities and identity not in counted_updated_identities:
                 updated += 1
+                counted_updated_identities.add(identity)
 
     return FuelImportSummary(
         total_rows=total_rows,
