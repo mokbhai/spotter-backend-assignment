@@ -1,6 +1,12 @@
 from django.core.management.base import BaseCommand, CommandError
 
+from fuel.models import FuelStation
+from routing.exceptions import RoutingProviderError
 from routing.services.fuel_import import import_fuel_price_rows, parse_fuel_price_csv
+from routing.services.geocoding import (
+    CensusBatchStationGeocoder,
+    apply_station_geocoding_results,
+)
 
 
 class Command(BaseCommand):
@@ -30,6 +36,24 @@ class Command(BaseCommand):
             self.stdout.write("Skipped station geocoding.")
             return
 
-        raise CommandError(
-            "Station geocoding is not implemented yet. Re-run with --skip-geocoding."
+        stations = list(
+            FuelStation.objects.filter(
+                geocoding_status=FuelStation.GeocodingStatus.PENDING
+            )
+        )
+        if not stations:
+            self.stdout.write("No pending stations to geocode.")
+            return
+
+        try:
+            results = CensusBatchStationGeocoder().geocode_stations(stations)
+        except RoutingProviderError as exc:
+            raise CommandError(f"Station batch geocoding failed: {exc}") from exc
+
+        geocoding_summary = apply_station_geocoding_results(results)
+        self.stdout.write(
+            "Station geocoding summary: "
+            f"matched={geocoding_summary.matched} "
+            f"unmatched={geocoding_summary.unmatched} "
+            f"failed={geocoding_summary.failed}"
         )

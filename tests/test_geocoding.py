@@ -7,8 +7,13 @@ from fuel.models import LocationCache
 from routing.exceptions import LocationNotFoundError, RoutingProviderError
 from routing.services.geocoding import (
     CensusGeocoder,
+    CensusBatchStationGeocoder,
     GeocodedLocation,
+    StationGeocodeResult,
+    apply_station_geocoding_results,
+    build_census_batch_input,
     normalize_query,
+    parse_census_batch_response,
     resolve_location,
 )
 
@@ -132,6 +137,211 @@ def test_census_geocoder_maps_malformed_response_to_provider_error(monkeypatch, 
 
     with pytest.raises(RoutingProviderError):
         CensusGeocoder().geocode_one("Austin, TX")
+
+
+@pytest.mark.django_db
+def test_build_census_batch_input_includes_station_id_and_address_parts():
+    from fuel.models import FuelStation
+
+    station = FuelStation.objects.create(
+        opis_truckstop_id="123",
+        name="Austin Fuel",
+        address="I-35",
+        city="Austin",
+        state="TX",
+        rack_id="1",
+        retail_price=Decimal("3.249"),
+        source_row_hash="station-batch-input",
+    )
+
+    csv_content = build_census_batch_input([station])
+
+    assert csv_content == f'{station.id},I-35,Austin,TX,\r\n'
+
+
+def test_parse_census_batch_response_extracts_coordinates():
+    results = parse_census_batch_response(
+        '"123","I-35, Austin, TX","Match","Exact","I-35, Austin, TX","-97.743100,30.267200","1","L"\n'
+    )
+
+    assert results == [
+        StationGeocodeResult(
+            station_id="123",
+            matched=True,
+            latitude=Decimal("30.267200"),
+            longitude=Decimal("-97.743100"),
+            score=Decimal("1"),
+        )
+    ]
+
+
+def test_parse_census_batch_response_marks_no_match():
+    results = parse_census_batch_response('"124","Missing","No_Match","","","","",""\n')
+
+    assert results == [
+        StationGeocodeResult(
+            station_id="124",
+            matched=False,
+            latitude=None,
+            longitude=None,
+            score=None,
+        )
+    ]
+
+
+def test_parse_census_batch_response_rejects_malformed_match_coordinates():
+    with pytest.raises(RoutingProviderError, match="Census batch geocoder returned malformed"):
+        parse_census_batch_response(
+            '"123","I-35, Austin, TX","Match","Exact","I-35, Austin, TX","bad","1","L"\n'
+        )
+
+
+@pytest.mark.django_db
+def test_apply_station_geocoding_results_marks_matched_and_unmatched():
+    from fuel.models import FuelStation
+
+    matched = FuelStation.objects.create(
+        opis_truckstop_id="123",
+        name="Austin Fuel",
+        address="I-35",
+        city="Austin",
+        state="TX",
+        rack_id="1",
+        retail_price=Decimal("3.249"),
+        source_row_hash="matched-station",
+    )
+    unmatched = FuelStation.objects.create(
+        opis_truckstop_id="124",
+        name="Missing Fuel",
+        address="Missing",
+        city="Austin",
+        state="TX",
+        rack_id="1",
+        retail_price=Decimal("3.249"),
+        source_row_hash="unmatched-station",
+        latitude=Decimal("30.000000"),
+        longitude=Decimal("-97.000000"),
+        geocoding_score=Decimal("0.500"),
+        is_active=True,
+    )
+
+    summary = apply_station_geocoding_results(
+        [
+            StationGeocodeResult(
+                station_id=str(matched.id),
+                matched=True,
+                latitude=Decimal("30.267200"),
+                longitude=Decimal("-97.743100"),
+                score=Decimal("1"),
+            ),
+            StationGeocodeResult(
+                station_id=str(unmatched.id),
+                matched=False,
+                latitude=None,
+                longitude=None,
+            ),
+        ]
+    )
+
+    matched.refresh_from_db()
+    unmatched.refresh_from_db()
+    assert summary.matched == 1
+    assert summary.unmatched == 1
+    assert summary.failed == 0
+    assert matched.latitude == Decimal("30.267200")
+    assert matched.longitude == Decimal("-97.743100")
+    assert matched.geocoding_score == Decimal("1.000")
+    assert matched.geocoding_status == FuelStation.GeocodingStatus.MATCHED
+    assert matched.is_active is True
+    assert unmatched.latitude is None
+    assert unmatched.longitude is None
+    assert unmatched.geocoding_score is None
+    assert unmatched.geocoding_status == FuelStation.GeocodingStatus.UNMATCHED
+    assert unmatched.is_active is False
+
+
+@pytest.mark.django_db
+def test_apply_station_geocoding_results_counts_missing_station_as_failed():
+    summary = apply_station_geocoding_results(
+        [
+            StationGeocodeResult(
+                station_id="999999",
+                matched=True,
+                latitude=Decimal("30.267200"),
+                longitude=Decimal("-97.743100"),
+            )
+        ]
+    )
+
+    assert summary.matched == 0
+    assert summary.unmatched == 0
+    assert summary.failed == 1
+
+
+@pytest.mark.django_db
+def test_census_batch_station_geocoder_posts_and_parses(monkeypatch, settings):
+    from fuel.models import FuelStation
+
+    settings.CENSUS_GEOCODER_BASE_URL = "https://example.test/geocoder"
+    station = FuelStation.objects.create(
+        opis_truckstop_id="123",
+        name="Austin Fuel",
+        address="I-35",
+        city="Austin",
+        state="TX",
+        rack_id="1",
+        retail_price=Decimal("3.249"),
+        source_row_hash="batch-post-station",
+    )
+    calls = []
+
+    class FakeBatchResponse:
+        text = f'"{station.id}","I-35, Austin, TX","Match","Exact","I-35, Austin, TX","-97.743100,30.267200","1","L"\n'
+
+        def raise_for_status(self):
+            return None
+
+    def fake_post(url, data, files, timeout):
+        calls.append((url, data, files, timeout))
+        return FakeBatchResponse()
+
+    monkeypatch.setattr("routing.services.geocoding.requests.post", fake_post)
+
+    results = CensusBatchStationGeocoder(timeout=3).geocode_stations([station])
+
+    assert results == [
+        StationGeocodeResult(
+            station_id=str(station.id),
+            matched=True,
+            latitude=Decimal("30.267200"),
+            longitude=Decimal("-97.743100"),
+            score=Decimal("1"),
+        )
+    ]
+    assert calls == [
+        (
+            "https://example.test/geocoder/locations/addressbatch",
+            {"benchmark": "Public_AR_Current"},
+            {
+                "addressFile": (
+                    "stations.csv",
+                    f'{station.id},I-35,Austin,TX,\r\n',
+                    "text/csv",
+                )
+            },
+            3,
+        )
+    ]
+
+
+def test_census_batch_station_geocoder_maps_http_failure(monkeypatch):
+    def fail_post(*args, **kwargs):
+        raise requests.RequestException("network down")
+
+    monkeypatch.setattr("routing.services.geocoding.requests.post", fail_post)
+
+    with pytest.raises(RoutingProviderError, match="Census batch geocoder failed"):
+        CensusBatchStationGeocoder().geocode_stations([])
 
 
 @pytest.mark.django_db

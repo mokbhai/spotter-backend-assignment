@@ -6,12 +6,14 @@ from django.core.management.base import CommandError
 from django.db import IntegrityError
 
 from fuel.models import FuelStation, LocationCache
+from routing.exceptions import RoutingProviderError
 from routing.services.fuel_import import (
     FuelPriceRow,
     import_fuel_price_rows,
     parse_fuel_price_csv,
     row_hash,
 )
+from routing.services.geocoding import StationGeocodeResult
 
 
 @pytest.mark.django_db
@@ -376,7 +378,78 @@ def test_import_command_loads_csv_without_live_geocoding(tmp_path, capsys):
 
 
 @pytest.mark.django_db
-def test_import_command_without_skip_geocoding_fails_after_import(tmp_path, capsys):
+def test_import_command_can_apply_batch_geocoding(tmp_path, capsys, monkeypatch):
+    path = tmp_path / "fuel.csv"
+    path.write_text(
+        "OPIS Truckstop ID,Truckstop Name,Address,City,State,Rack ID,Retail Price\n"
+        "79,DELAWARE TRUCK PLAZA,US-13 & US-40,New Castle,DE,243,3.249\n",
+        encoding="utf-8",
+    )
+    geocode_calls = []
+
+    class FakeBatchGeocoder:
+        def geocode_stations(self, stations):
+            geocode_calls.append(list(stations))
+            return [
+                StationGeocodeResult(
+                    station_id=str(stations[0].id),
+                    matched=True,
+                    latitude=Decimal("39.662000"),
+                    longitude=Decimal("-75.566000"),
+                    score=Decimal("1"),
+                )
+            ]
+
+    monkeypatch.setattr(
+        "fuel.management.commands.import_fuel_prices.CensusBatchStationGeocoder",
+        FakeBatchGeocoder,
+    )
+
+    call_command("import_fuel_prices", str(path))
+
+    station = FuelStation.objects.get(opis_truckstop_id="79")
+    assert len(geocode_calls) == 1
+    assert geocode_calls[0] == [station]
+    assert station.is_active is True
+    assert station.geocoding_status == FuelStation.GeocodingStatus.MATCHED
+    assert station.latitude == Decimal("39.662000")
+    assert station.longitude == Decimal("-75.566000")
+    output = capsys.readouterr().out
+    assert "total=1" in output
+    assert "Station geocoding summary: matched=1 unmatched=0 failed=0" in output
+
+
+@pytest.mark.django_db
+def test_import_command_reports_no_pending_stations(tmp_path, capsys):
+    path = tmp_path / "fuel.csv"
+    path.write_text(
+        "OPIS Truckstop ID,Truckstop Name,Address,City,State,Rack ID,Retail Price\n",
+        encoding="utf-8",
+    )
+    FuelStation.objects.create(
+        opis_truckstop_id="79",
+        name="DELAWARE TRUCK PLAZA",
+        address="US-13 & US-40",
+        city="New Castle",
+        state="DE",
+        rack_id="243",
+        retail_price=Decimal("3.249"),
+        source_row_hash="matched-before-command",
+        geocoding_status=FuelStation.GeocodingStatus.MATCHED,
+        latitude=Decimal("39.662000"),
+        longitude=Decimal("-75.566000"),
+        is_active=True,
+    )
+
+    call_command("import_fuel_prices", str(path))
+
+    output = capsys.readouterr().out
+    assert "total=0" in output
+    assert "No pending stations to geocode." in output
+
+
+@pytest.mark.django_db
+def test_import_command_maps_batch_provider_error_to_command_error(tmp_path, monkeypatch):
     path = tmp_path / "fuel.csv"
     path.write_text(
         "OPIS Truckstop ID,Truckstop Name,Address,City,State,Rack ID,Retail Price\n"
@@ -384,9 +457,14 @@ def test_import_command_without_skip_geocoding_fails_after_import(tmp_path, caps
         encoding="utf-8",
     )
 
-    with pytest.raises(CommandError, match="Station geocoding is not implemented yet"):
-        call_command("import_fuel_prices", str(path))
+    class FailingBatchGeocoder:
+        def geocode_stations(self, stations):
+            raise RoutingProviderError("provider unavailable")
 
-    assert FuelStation.objects.filter(opis_truckstop_id="79").exists()
-    output = capsys.readouterr().out
-    assert "total=1" in output
+    monkeypatch.setattr(
+        "fuel.management.commands.import_fuel_prices.CensusBatchStationGeocoder",
+        FailingBatchGeocoder,
+    )
+
+    with pytest.raises(CommandError, match="Station batch geocoding failed: provider unavailable"):
+        call_command("import_fuel_prices", str(path))
