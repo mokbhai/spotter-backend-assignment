@@ -1,5 +1,6 @@
 import csv
 import hashlib
+import json
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -39,7 +40,8 @@ def row_hash(row: FuelPriceRow) -> str:
         row.rack_id,
         str(row.retail_price),
     ]
-    return hashlib.sha256("|".join(row_values).encode("utf-8")).hexdigest()
+    payload = json.dumps(row_values, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def parse_fuel_price_csv(path: str | Path) -> Iterable[FuelPriceRow]:
@@ -58,6 +60,7 @@ def parse_fuel_price_csv(path: str | Path) -> Iterable[FuelPriceRow]:
 
 
 def import_fuel_price_rows(rows: Iterable[FuelPriceRow]) -> FuelImportSummary:
+    from django.db import transaction
     from fuel.models import FuelStation
 
     total_rows = 0
@@ -66,29 +69,30 @@ def import_fuel_price_rows(rows: Iterable[FuelPriceRow]) -> FuelImportSummary:
     duplicate_opis_ids = 0
     seen_opis_ids: set[str] = set()
 
-    for row in rows:
-        total_rows += 1
-        if row.opis_truckstop_id in seen_opis_ids:
-            duplicate_opis_ids += 1
-        seen_opis_ids.add(row.opis_truckstop_id)
+    with transaction.atomic():
+        for row in rows:
+            total_rows += 1
+            if row.opis_truckstop_id in seen_opis_ids:
+                duplicate_opis_ids += 1
+            seen_opis_ids.add(row.opis_truckstop_id)
 
-        _, was_created = FuelStation.objects.update_or_create(
-            source_row_hash=row_hash(row),
-            defaults={
-                "opis_truckstop_id": row.opis_truckstop_id,
-                "name": row.name,
-                "address": row.address,
-                "city": row.city,
-                "state": row.state,
-                "rack_id": row.rack_id,
-                "retail_price": row.retail_price,
-            },
-        )
+            _, was_created = FuelStation.objects.update_or_create(
+                source_row_hash=row_hash(row),
+                defaults={
+                    "opis_truckstop_id": row.opis_truckstop_id,
+                    "name": row.name,
+                    "address": row.address,
+                    "city": row.city,
+                    "state": row.state,
+                    "rack_id": row.rack_id,
+                    "retail_price": row.retail_price,
+                },
+            )
 
-        if was_created:
-            created += 1
-        else:
-            updated += 1
+            if was_created:
+                created += 1
+            else:
+                updated += 1
 
     return FuelImportSummary(
         total_rows=total_rows,

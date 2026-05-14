@@ -158,6 +158,20 @@ def test_parse_fuel_price_csv_preserves_price_precision(tmp_path):
     assert row.retail_price == Decimal("3.00733333")
 
 
+def test_parse_fuel_price_csv_handles_utf8_bom(tmp_path):
+    path = tmp_path / "fuel.csv"
+    path.write_text(
+        "\ufeffOPIS Truckstop ID,Truckstop Name,Address,City,State,Rack ID,Retail Price\n"
+        "7,WOODSHED OF BIG CABIN,US-69,Big Cabin,OK,307,3.00733333\n",
+        encoding="utf-8",
+    )
+
+    row = list(parse_fuel_price_csv(path))[0]
+
+    assert row.opis_truckstop_id == "7"
+    assert row.retail_price == Decimal("3.00733333")
+
+
 @pytest.mark.django_db
 def test_import_fuel_price_rows_is_idempotent():
     row = FuelPriceRow(
@@ -195,8 +209,39 @@ def test_import_fuel_price_rows_counts_duplicate_opis_ids():
     assert FuelStation.objects.filter(opis_truckstop_id="20").count() == 2
 
 
+@pytest.mark.django_db
+def test_import_fuel_price_rows_rolls_back_batch_on_error(monkeypatch):
+    rows = [
+        FuelPriceRow("91", "FIRST", "A", "City", "TX", "1", Decimal("3.100")),
+        FuelPriceRow("92", "SECOND", "B", "City", "TX", "1", Decimal("3.200")),
+    ]
+    original_update_or_create = FuelStation.objects.update_or_create
+    calls = 0
+
+    def fail_after_first(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise IntegrityError("forced failure")
+        return original_update_or_create(*args, **kwargs)
+
+    monkeypatch.setattr(FuelStation.objects, "update_or_create", fail_after_first)
+
+    with pytest.raises(IntegrityError):
+        import_fuel_price_rows(rows)
+
+    assert FuelStation.objects.filter(opis_truckstop_id__in=["91", "92"]).count() == 0
+
+
 def test_row_hash_changes_when_source_data_changes():
     original = FuelPriceRow("79", "A", "Addr", "City", "DE", "243", Decimal("3.249"))
     changed = FuelPriceRow("79", "A", "Addr", "City", "DE", "243", Decimal("3.250"))
 
     assert row_hash(original) != row_hash(changed)
+
+
+def test_row_hash_is_delimiter_safe():
+    left = FuelPriceRow("79|A", "B", "Addr", "City", "DE", "243", Decimal("3.249"))
+    right = FuelPriceRow("79", "A|B", "Addr", "City", "DE", "243", Decimal("3.249"))
+
+    assert row_hash(left) != row_hash(right)
