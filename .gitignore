@@ -1,0 +1,6 @@
+.venv/
+db.sqlite3
+.pytest_cache/
+__pycache__/
+*.pyc
+.worktrees/
