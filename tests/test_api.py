@@ -146,8 +146,17 @@ def test_drf_is_json_only(settings):
 
 
 def test_database_uses_sqlite(settings):
+    import importlib
+
+    from spotter_backend import settings as project_settings
+
+    project_settings = importlib.reload(project_settings)
+
     assert settings.DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3"
-    assert settings.DATABASES["default"]["NAME"] == settings.BASE_DIR / "db.sqlite3"
+    assert (
+        project_settings.DATABASES["default"]["NAME"]
+        == project_settings.BASE_DIR / "db.sqlite3"
+    )
 
 
 def test_routes_are_mounted_under_api_routes(settings):
