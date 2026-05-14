@@ -109,6 +109,21 @@ def test_optimizer_warns_when_first_station_is_not_near_origin():
     assert any("starting fuel" in warning for warning in plan.warnings)
 
 
+def test_optimizer_accounts_for_origin_to_first_station_segment():
+    first = station(1, route_mile=10, price_per_gallon=Decimal("3.0000"))
+
+    plan = build_fuel_plan(
+        [first],
+        route_distance_miles=100,
+        max_range_miles=500,
+        miles_per_gallon=Decimal("10"),
+    )
+
+    assert plan.stops[0].gallons == Decimal("10.00")
+    assert plan.total_gallons == Decimal("10.00")
+    assert plan.total_cost == Decimal("30.00")
+
+
 def test_optimizer_uses_cheapest_reachable_when_no_cheaper_station_is_ahead():
     current = station(1, price_per_gallon=Decimal("4.0000"), route_mile=100)
     close = station(2, name="Close", price_per_gallon=Decimal("4.5000"), route_mile=180)
@@ -122,8 +137,27 @@ def test_optimizer_uses_cheapest_reachable_when_no_cheaper_station_is_ahead():
     )
 
     assert plan.stops[0].station_id == current.station_id
-    assert plan.stops[0].gallons == Decimal("20.00")
+    assert plan.stops[0].gallons == Decimal("30.00")
     assert plan.stops[1].station_id == cheapest.station_id
+
+
+def test_optimizer_measures_downstream_reach_from_current_station():
+    first = station(1, price_per_gallon=Decimal("4.0000"), route_mile=100)
+    downstream = station(
+        2,
+        name="Downstream",
+        price_per_gallon=Decimal("3.5000"),
+        route_mile=550,
+    )
+
+    plan = build_fuel_plan(
+        [first, downstream],
+        route_distance_miles=650,
+        max_range_miles=500,
+        miles_per_gallon=Decimal("10"),
+    )
+
+    assert [stop.station_id for stop in plan.stops] == [1, 2]
 
 
 def test_optimizer_rounds_money_half_up():

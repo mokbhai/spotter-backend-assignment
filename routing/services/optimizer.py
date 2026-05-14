@@ -95,9 +95,10 @@ def build_fuel_plan(
     mpg = _decimal(miles_per_gallon)
 
     current_index = 0
-    current_mile = _decimal(ordered[current_index].route_mile)
+    accounted_mile = Decimal("0")
+    current_station_mile = _decimal(ordered[current_index].route_mile)
 
-    while current_mile < route_distance:
+    while accounted_mile < route_distance:
         current_station = ordered[current_index]
         current_price = current_station.price_per_gallon
 
@@ -105,7 +106,7 @@ def build_fuel_plan(
         for index in range(current_index + 1, len(ordered)):
             station = ordered[index]
             station_mile = _decimal(station.route_mile)
-            if station_mile - current_mile <= max_range:
+            if station_mile - current_station_mile <= max_range:
                 reachable.append((index, station))
 
         selected_index: int | None = None
@@ -122,7 +123,7 @@ def build_fuel_plan(
         if cheaper is not None:
             selected_index, selected_station = cheaper
             target_mile = _decimal(selected_station.route_mile)
-        elif route_distance - current_mile <= max_range:
+        elif route_distance - current_station_mile <= max_range:
             selected_index = None
         elif not reachable:
             raise NoFeasibleFuelPlanError("No reachable downstream fuel station is available.")
@@ -137,18 +138,20 @@ def build_fuel_plan(
             )
             target_mile = _decimal(selected_station.route_mile)
 
-        miles_to_cover = target_mile - current_mile
+        miles_to_cover = target_mile - accounted_mile
         stop_gallons = gallons(miles_to_cover / mpg)
         stop_cost = money(stop_gallons * current_price)
 
         if stop_gallons > 0:
             stops.append(_build_stop(current_station, stop_gallons, stop_cost))
 
+        accounted_mile = target_mile
+
         if selected_index is None:
             break
 
         current_index = selected_index
-        current_mile = _decimal(ordered[current_index].route_mile)
+        current_station_mile = _decimal(ordered[current_index].route_mile)
 
     total_gallons = gallons(sum((stop.gallons for stop in stops), Decimal("0")))
     total_cost = money(sum((stop.cost for stop in stops), Decimal("0")))
