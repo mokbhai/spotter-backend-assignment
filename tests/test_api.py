@@ -63,7 +63,7 @@ def test_fuel_plan_endpoint_returns_success(monkeypatch):
 
 def test_fuel_plan_endpoint_maps_no_feasible_plan(monkeypatch):
     def fake_build_route_fuel_plan(**kwargs):
-        raise NoFeasibleFuelPlanError
+        raise NoFeasibleFuelPlanError("internal graph exhausted at station_id=4812")
 
     monkeypatch.setattr(
         "routing.views.build_route_fuel_plan", fake_build_route_fuel_plan
@@ -73,11 +73,17 @@ def test_fuel_plan_endpoint_maps_no_feasible_plan(monkeypatch):
 
     assert response.status_code == 422
     assert response.json()["error"] == "no_feasible_fuel_plan"
+    assert (
+        response.json()["message"]
+        == "A route was found, but the available fuel-price dataset does not contain "
+        "enough reachable fuel stations to complete the trip within a 500-mile "
+        "vehicle range."
+    )
 
 
 def test_fuel_plan_endpoint_maps_location_not_found(monkeypatch):
     def fake_build_route_fuel_plan(**kwargs):
-        raise LocationNotFoundError
+        raise LocationNotFoundError("geocoder returned ZERO_RESULTS for raw query")
 
     monkeypatch.setattr(
         "routing.views.build_route_fuel_plan", fake_build_route_fuel_plan
@@ -87,11 +93,15 @@ def test_fuel_plan_endpoint_maps_location_not_found(monkeypatch):
 
     assert response.status_code == 422
     assert response.json()["error"] == "location_not_found"
+    assert (
+        response.json()["message"]
+        == "Start or destination could not be resolved to a USA location."
+    )
 
 
 def test_fuel_plan_endpoint_maps_routing_provider_error(monkeypatch):
     def fake_build_route_fuel_plan(**kwargs):
-        raise RoutingProviderError
+        raise RoutingProviderError("ORS 500: token quota abc123 exhausted")
 
     monkeypatch.setattr(
         "routing.views.build_route_fuel_plan", fake_build_route_fuel_plan
@@ -101,6 +111,7 @@ def test_fuel_plan_endpoint_maps_routing_provider_error(monkeypatch):
 
     assert response.status_code == 503
     assert response.json()["error"] == "routing_unavailable"
+    assert response.json()["message"] == "Route calculation is temporarily unavailable."
 
 
 def test_fuel_plan_endpoint_rejects_invalid_request(monkeypatch):
