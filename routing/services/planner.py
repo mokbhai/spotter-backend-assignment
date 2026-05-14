@@ -71,6 +71,9 @@ def build_route_fuel_plan(
             "total_gallons": fuel_plan.total_gallons,
             "total_cost": fuel_plan.total_cost,
             "currency": "USD",
+            "starting_fuel_assumption": serialize_starting_fuel_assumption(
+                fuel_plan.starting_fuel_assumption
+            ),
             "stops": [
                 {
                     "station_id": stop.station_id,
@@ -90,4 +93,17 @@ def build_route_fuel_plan(
         },
         "warnings": fuel_plan.warnings,
         "metadata": {"routing_provider": "osrm"},
+    }
+
+
+def serialize_starting_fuel_assumption(assumption):
+    if assumption is None:
+        return None
+
+    return {
+        "distance_miles": round(assumption.distance_miles, 2),
+        "gallons": assumption.gallons,
+        "cost": assumption.cost,
+        "price_per_gallon": assumption.price_per_gallon,
+        "priced_at_station_id": assumption.priced_at_station_id,
     }

@@ -50,6 +50,7 @@ class Migration(migrations.Migration):
             options={
                 'ordering': ['name', 'city', 'state'],
                 'indexes': [models.Index(fields=['state', 'city'], name='fuel_fuelst_state_99cf3a_idx'), models.Index(fields=['is_active', 'latitude', 'longitude'], name='fuel_fuelst_is_acti_fcb361_idx'), models.Index(fields=['retail_price'], name='fuel_fuelst_retail__3784a3_idx'), models.Index(fields=['opis_truckstop_id'], name='fuel_fuelst_opis_tr_125a51_idx')],
+                'constraints': [models.UniqueConstraint(fields=('opis_truckstop_id', 'address', 'city', 'state', 'rack_id'), name='fuel_station_identity_unique')],
             },
         ),
     ]

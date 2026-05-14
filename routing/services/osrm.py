@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from math import isfinite
 from numbers import Real
 
 import requests
@@ -76,15 +77,23 @@ class OSRMClient:
             raise RoutingProviderError("Route calculation failed.")
 
         for position in coordinates:
-            if (
-                not isinstance(position, (list, tuple))
-                or len(position) < 2
-                or not all(
-                    self._is_numeric_coordinate(coordinate)
-                    for coordinate in position
-                )
-            ):
+            if not self._is_valid_position(position):
                 raise RoutingProviderError("Route calculation failed.")
 
+    def _is_valid_position(self, position):
+        if not isinstance(position, (list, tuple)) or len(position) < 2:
+            return False
+
+        longitude, latitude = position[0], position[1]
+        if not (
+            self._is_numeric_coordinate(longitude)
+            and self._is_numeric_coordinate(latitude)
+            and -180 <= longitude <= 180
+            and -90 <= latitude <= 90
+        ):
+            return False
+
+        return all(self._is_numeric_coordinate(coordinate) for coordinate in position[2:])
+
     def _is_numeric_coordinate(self, value):
-        return isinstance(value, Real) and not isinstance(value, bool)
+        return isinstance(value, Real) and not isinstance(value, bool) and isfinite(value)

@@ -32,7 +32,7 @@ def test_fuel_station_allows_duplicate_opis_ids():
     FuelStation.objects.create(
         opis_truckstop_id="20",
         name="PILOT #1243",
-        address="I-8, EXIT 119 & SR-85",
+        address="I-8, EXIT 120 & SR-85",
         city="Gila Bend",
         state="AZ",
         rack_id="930",
@@ -42,6 +42,32 @@ def test_fuel_station_allows_duplicate_opis_ids():
     )
 
     assert FuelStation.objects.filter(opis_truckstop_id="20").count() == 2
+
+
+@pytest.mark.django_db
+def test_fuel_station_physical_identity_is_unique():
+    FuelStation.objects.create(
+        opis_truckstop_id="20",
+        name="PILOT TRAVEL CENTER #1243",
+        address="I-8, EXIT 119 & SR-85",
+        city="Gila Bend",
+        state="AZ",
+        rack_id="930",
+        retail_price=Decimal("3.899"),
+        source_row_hash="hash-one",
+    )
+
+    with pytest.raises(IntegrityError):
+        FuelStation.objects.create(
+            opis_truckstop_id="20",
+            name="PILOT #1243 RENAMED",
+            address="I-8, EXIT 119 & SR-85",
+            city="Gila Bend",
+            state="AZ",
+            rack_id="930",
+            retail_price=Decimal("3.799"),
+            source_row_hash="hash-two",
+        )
 
 
 @pytest.mark.django_db

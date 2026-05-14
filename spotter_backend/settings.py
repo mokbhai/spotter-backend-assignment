@@ -1,11 +1,27 @@
+import os
 from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = "django-insecure-spotter-backend-development"
-DEBUG = True
-ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
+
+def env_bool(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+SECRET_KEY = os.environ.get(
+    "SPOTTER_SECRET_KEY",
+    "django-insecure-spotter-backend-development",
+)
+DEBUG = env_bool("SPOTTER_DEBUG", default=True)
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.environ.get("SPOTTER_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if host.strip()
+]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -77,6 +93,12 @@ REST_FRAMEWORK = {
     "DEFAULT_PARSER_CLASSES": [
         "rest_framework.parsers.JSONParser",
     ],
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "fuel_plan": os.environ.get("SPOTTER_FUEL_PLAN_THROTTLE", "60/min"),
+    },
 }
 
 OSRM_BASE_URL = "https://router.project-osrm.org"

@@ -185,3 +185,10 @@ def test_required_route_planner_settings(settings):
     assert settings.MAX_ROUTE_CORRIDOR_MILES == 25
     assert settings.DEFAULT_MAX_RANGE_MILES == 500
     assert settings.DEFAULT_MILES_PER_GALLON == 10
+
+
+def test_fuel_plan_endpoint_uses_scoped_throttle(settings):
+    from routing.views import FuelPlanView
+
+    assert FuelPlanView.throttle_scope == "fuel_plan"
+    assert settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["fuel_plan"] == "60/min"

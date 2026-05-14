@@ -50,6 +50,18 @@ class FuelStation(models.Model):
             models.Index(fields=["retail_price"]),
             models.Index(fields=["opis_truckstop_id"]),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "opis_truckstop_id",
+                    "address",
+                    "city",
+                    "state",
+                    "rack_id",
+                ],
+                name="fuel_station_identity_unique",
+            ),
+        ]
         ordering = ["name", "city", "state"]
 
     def __str__(self):

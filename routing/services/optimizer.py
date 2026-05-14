@@ -35,11 +35,21 @@ class FuelStop:
 
 
 @dataclass(frozen=True)
+class StartingFuelAssumption:
+    distance_miles: Decimal
+    gallons: Decimal
+    cost: Decimal
+    price_per_gallon: Decimal
+    priced_at_station_id: int
+
+
+@dataclass(frozen=True)
 class FuelPlan:
     total_gallons: Decimal
     total_cost: Decimal
     stops: list[FuelStop]
     warnings: list[str]
+    starting_fuel_assumption: StartingFuelAssumption | None = None
 
 
 def money(value: Decimal) -> Decimal:
@@ -95,10 +105,14 @@ def build_fuel_plan(
     mpg = _decimal(miles_per_gallon)
 
     current_index = 0
-    accounted_mile = Decimal("0")
     current_station_mile = _decimal(ordered[current_index].route_mile)
+    starting_fuel_assumption = _build_starting_fuel_assumption(
+        ordered[current_index],
+        distance_miles=min(current_station_mile, route_distance),
+        miles_per_gallon=mpg,
+    )
 
-    while accounted_mile < route_distance:
+    while current_station_mile < route_distance:
         current_station = ordered[current_index]
         current_price = current_station.price_per_gallon
 
@@ -138,14 +152,12 @@ def build_fuel_plan(
             )
             target_mile = _decimal(selected_station.route_mile)
 
-        miles_to_cover = target_mile - accounted_mile
+        miles_to_cover = target_mile - current_station_mile
         stop_gallons = gallons(miles_to_cover / mpg)
         stop_cost = money(stop_gallons * current_price)
 
         if stop_gallons > 0:
             stops.append(_build_stop(current_station, stop_gallons, stop_cost))
-
-        accounted_mile = target_mile
 
         if selected_index is None:
             break
@@ -153,12 +165,44 @@ def build_fuel_plan(
         current_index = selected_index
         current_station_mile = _decimal(ordered[current_index].route_mile)
 
-    total_gallons = gallons(sum((stop.gallons for stop in stops), Decimal("0")))
-    total_cost = money(sum((stop.cost for stop in stops), Decimal("0")))
+    starting_gallons = (
+        starting_fuel_assumption.gallons
+        if starting_fuel_assumption is not None
+        else Decimal("0")
+    )
+    starting_cost = (
+        starting_fuel_assumption.cost
+        if starting_fuel_assumption is not None
+        else Decimal("0")
+    )
+    total_gallons = gallons(
+        starting_gallons + sum((stop.gallons for stop in stops), Decimal("0"))
+    )
+    total_cost = money(starting_cost + sum((stop.cost for stop in stops), Decimal("0")))
 
     return FuelPlan(
         total_gallons=total_gallons,
         total_cost=total_cost,
         stops=stops,
         warnings=warnings,
+        starting_fuel_assumption=starting_fuel_assumption,
+    )
+
+
+def _build_starting_fuel_assumption(
+    station: OptimizerStation,
+    *,
+    distance_miles: Decimal,
+    miles_per_gallon: Decimal,
+) -> StartingFuelAssumption | None:
+    if distance_miles <= 0:
+        return None
+
+    starting_gallons = gallons(distance_miles / miles_per_gallon)
+    return StartingFuelAssumption(
+        distance_miles=distance_miles,
+        gallons=starting_gallons,
+        cost=money(starting_gallons * station.price_per_gallon),
+        price_per_gallon=station.price_per_gallon,
+        priced_at_station_id=station.station_id,
     )

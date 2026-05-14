@@ -39,6 +39,13 @@ as pending.
 python manage.py runserver
 ```
 
+Runtime settings can be overridden with environment variables:
+
+- `SPOTTER_SECRET_KEY`
+- `SPOTTER_DEBUG`
+- `SPOTTER_ALLOWED_HOSTS`
+- `SPOTTER_FUEL_PLAN_THROTTLE`
+
 ## API
 
 POST route fuel-plan requests to:
@@ -76,6 +83,10 @@ Successful responses include:
 - `route`: route distance and OSRM GeoJSON `LineString` geometry.
 - `fuel_plan`: selected stops, gallons, cost, price per gallon, total gallons,
   total cost, range, MPG, and currency.
+- `fuel_plan.starting_fuel_assumption`: an explicit estimate for fuel used
+  before the first available dataset station when no station is close to the
+  origin segment. This keeps stop-level gallons physically meaningful while
+  keeping total gallons and total cost tied to the full route.
 - `warnings`: planner warnings such as arrival fuel notes.
 - `metadata`: provider metadata, including the routing provider.
 

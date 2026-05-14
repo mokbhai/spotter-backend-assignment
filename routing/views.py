@@ -13,6 +13,7 @@ from routing.services.planner import build_route_fuel_plan
 class FuelPlanView(APIView):
     authentication_classes = []
     permission_classes = []
+    throttle_scope = "fuel_plan"
 
     def post(self, request):
         serializer = FuelPlanRequestSerializer(data=request.data)

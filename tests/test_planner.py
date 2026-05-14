@@ -90,6 +90,7 @@ def test_planner_returns_route_and_fuel_plan_with_coordinate_inputs():
     assert response["fuel_plan"]["currency"] == "USD"
     assert response["fuel_plan"]["max_range_miles"] == 500
     assert response["fuel_plan"]["miles_per_gallon"] == Decimal("10")
+    assert response["fuel_plan"]["starting_fuel_assumption"] is None
     assert response["fuel_plan"]["stops"] == [
         {
             "station_id": station.id,
@@ -269,3 +270,32 @@ def test_planner_rounds_route_distance_and_stop_route_mile():
 
     assert response["route"]["distance_miles"] == 100.13
     assert response["fuel_plan"]["stops"][0]["route_mile"] == 6.91
+
+
+@pytest.mark.django_db
+def test_planner_exposes_starting_fuel_assumption_when_first_station_downstream():
+    station = create_station(latitude=30.1, longitude=-97, retail_price=Decimal("3.00"))
+    route = Route(
+        distance_miles=100,
+        geometry={
+            "type": "LineString",
+            "coordinates": [[-97, 30], [-97, 31]],
+        },
+    )
+
+    response = build_route_fuel_plan(
+        start={"lat": Decimal("30.000000"), "lng": Decimal("-97.000000")},
+        destination={"lat": Decimal("31.000000"), "lng": Decimal("-97.000000")},
+        corridor_miles=10,
+        max_range_miles=500,
+        miles_per_gallon=Decimal("10"),
+        router=FakeRouter(route),
+    )
+
+    assert response["fuel_plan"]["starting_fuel_assumption"] == {
+        "distance_miles": Decimal("6.91"),
+        "gallons": Decimal("0.69"),
+        "cost": Decimal("2.07"),
+        "price_per_gallon": Decimal("3.00000000"),
+        "priced_at_station_id": station.id,
+    }
