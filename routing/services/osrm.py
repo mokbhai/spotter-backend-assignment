@@ -79,8 +79,10 @@ class OSRMClient:
             if (
                 not isinstance(position, (list, tuple))
                 or len(position) < 2
-                or not self._is_numeric_coordinate(position[0])
-                or not self._is_numeric_coordinate(position[1])
+                or not all(
+                    self._is_numeric_coordinate(coordinate)
+                    for coordinate in position
+                )
             ):
                 raise RoutingProviderError("Route calculation failed.")
 

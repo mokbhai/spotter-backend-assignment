@@ -127,6 +127,7 @@ def test_osrm_client_maps_malformed_protocol_payload_to_provider_error(monkeypat
         {"type": "LineString", "coordinates": ["not-a-position", [-95.3698, 29.7604]]},
         {"type": "LineString", "coordinates": [[None, 30.2672], [-95.3698, 29.7604]]},
         {"type": "LineString", "coordinates": [["-97.7431", 30.2672], [-95.3698, 29.7604]]},
+        {"type": "LineString", "coordinates": [[-97.7431, 30.2672, "bad-altitude"], [-95.3698, 29.7604]]},
     ],
 )
 def test_osrm_client_rejects_malformed_geometry(monkeypatch, geometry):
