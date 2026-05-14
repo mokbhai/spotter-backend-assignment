@@ -1,9 +1,14 @@
 from decimal import Decimal
+from types import MappingProxyType
 
 import pytest
 
 from fuel.models import FuelStation, LocationCache
-from routing.exceptions import NoFeasibleFuelPlanError
+from routing.exceptions import (
+    LocationNotFoundError,
+    NoFeasibleFuelPlanError,
+    RoutingProviderError,
+)
 from routing.services.osrm import Route
 from routing.services.planner import build_route_fuel_plan
 
@@ -16,6 +21,11 @@ class FakeRouter:
     def route(self, start_lat, start_lng, dest_lat, dest_lng):
         self.calls.append((start_lat, start_lng, dest_lat, dest_lng))
         return self.route_result
+
+
+class FailingRouter:
+    def route(self, start_lat, start_lng, dest_lat, dest_lng):
+        raise RoutingProviderError("Route calculation failed.")
 
 
 def create_station(
@@ -100,6 +110,41 @@ def test_planner_returns_route_and_fuel_plan_with_coordinate_inputs():
 
 
 @pytest.mark.django_db
+def test_planner_accepts_generic_mapping_coordinate_inputs():
+    create_station()
+    route = Route(
+        distance_miles=100,
+        geometry={
+            "type": "LineString",
+            "coordinates": [[-97, 30], [-97, 31]],
+        },
+    )
+    router = FakeRouter(route)
+
+    build_route_fuel_plan(
+        start=MappingProxyType(
+            {"lat": Decimal("30.000000"), "lng": Decimal("-97.000000")}
+        ),
+        destination=MappingProxyType(
+            {"lat": Decimal("31.000000"), "lng": Decimal("-97.000000")}
+        ),
+        corridor_miles=10,
+        max_range_miles=500,
+        miles_per_gallon=Decimal("10"),
+        router=router,
+    )
+
+    assert router.calls == [
+        (
+            Decimal("30.000000"),
+            Decimal("-97.000000"),
+            Decimal("31.000000"),
+            Decimal("-97.000000"),
+        )
+    ]
+
+
+@pytest.mark.django_db
 def test_planner_resolves_string_locations_from_cache_or_provider():
     LocationCache.objects.create(
         query="austin, tx",
@@ -140,6 +185,45 @@ def test_planner_resolves_string_locations_from_cache_or_provider():
             Decimal("-96.797000"),
         )
     ]
+
+
+@pytest.mark.django_db
+def test_planner_propagates_location_resolution_failure(monkeypatch):
+    def fail_resolve_location(query):
+        raise LocationNotFoundError(f"No geocoding match found for {query!r}")
+
+    monkeypatch.setattr("routing.services.planner.resolve_location", fail_resolve_location)
+
+    with pytest.raises(LocationNotFoundError, match="No geocoding match"):
+        build_route_fuel_plan(
+            start="Missing Place",
+            destination={"lat": Decimal("31.000000"), "lng": Decimal("-97.000000")},
+            corridor_miles=10,
+            max_range_miles=500,
+            miles_per_gallon=Decimal("10"),
+            router=FakeRouter(
+                Route(
+                    distance_miles=100,
+                    geometry={
+                        "type": "LineString",
+                        "coordinates": [[-97, 30], [-97, 31]],
+                    },
+                )
+            ),
+        )
+
+
+@pytest.mark.django_db
+def test_planner_propagates_router_failure():
+    with pytest.raises(RoutingProviderError, match="Route calculation failed"):
+        build_route_fuel_plan(
+            start={"lat": Decimal("30.000000"), "lng": Decimal("-97.000000")},
+            destination={"lat": Decimal("31.000000"), "lng": Decimal("-97.000000")},
+            corridor_miles=10,
+            max_range_miles=500,
+            miles_per_gallon=Decimal("10"),
+            router=FailingRouter(),
+        )
 
 
 @pytest.mark.django_db

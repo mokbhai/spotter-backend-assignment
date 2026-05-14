@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Protocol
 
 from routing.services.candidates import find_candidate_stations
@@ -14,7 +15,7 @@ class Router(Protocol):
 
 
 def resolve_input_location(value):
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return value["lat"], value["lng"]
 
     if isinstance(value, str):
