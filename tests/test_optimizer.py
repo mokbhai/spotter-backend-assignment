@@ -74,6 +74,28 @@ def test_optimizer_raises_when_gap_exceeds_range():
         )
 
 
+def test_optimizer_raises_when_no_stations_are_available():
+    with pytest.raises(NoFeasibleFuelPlanError):
+        build_fuel_plan(
+            [],
+            route_distance_miles=100,
+            max_range_miles=500,
+            miles_per_gallon=Decimal("10"),
+        )
+
+
+def test_optimizer_raises_when_first_station_is_beyond_range():
+    first = station(1, route_mile=501)
+
+    with pytest.raises(NoFeasibleFuelPlanError):
+        build_fuel_plan(
+            [first],
+            route_distance_miles=600,
+            max_range_miles=500,
+            miles_per_gallon=Decimal("10"),
+        )
+
+
 def test_optimizer_warns_when_first_station_is_not_near_origin():
     first = station(1, route_mile=10)
 
