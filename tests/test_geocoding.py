@@ -279,6 +279,78 @@ def test_apply_station_geocoding_results_counts_missing_station_as_failed():
 
 
 @pytest.mark.django_db
+def test_apply_station_geocoding_results_rejects_matched_result_without_coordinates():
+    from fuel.models import FuelStation
+
+    station = FuelStation.objects.create(
+        opis_truckstop_id="123",
+        name="Austin Fuel",
+        address="I-35",
+        city="Austin",
+        state="TX",
+        rack_id="1",
+        retail_price=Decimal("3.249"),
+        source_row_hash="missing-coordinates-station",
+    )
+
+    summary = apply_station_geocoding_results(
+        [
+            StationGeocodeResult(
+                station_id=str(station.id),
+                matched=True,
+                latitude=None,
+                longitude=Decimal("-97.743100"),
+            )
+        ]
+    )
+
+    station.refresh_from_db()
+    assert summary.matched == 0
+    assert summary.unmatched == 0
+    assert summary.failed == 1
+    assert station.latitude is None
+    assert station.longitude is None
+    assert station.geocoding_status == FuelStation.GeocodingStatus.PENDING
+    assert station.is_active is False
+
+
+@pytest.mark.django_db
+def test_apply_station_geocoding_results_rejects_out_of_range_coordinates():
+    from fuel.models import FuelStation
+
+    station = FuelStation.objects.create(
+        opis_truckstop_id="123",
+        name="Austin Fuel",
+        address="I-35",
+        city="Austin",
+        state="TX",
+        rack_id="1",
+        retail_price=Decimal("3.249"),
+        source_row_hash="out-of-range-station",
+    )
+
+    summary = apply_station_geocoding_results(
+        [
+            StationGeocodeResult(
+                station_id=str(station.id),
+                matched=True,
+                latitude=Decimal("91.000000"),
+                longitude=Decimal("-97.743100"),
+            )
+        ]
+    )
+
+    station.refresh_from_db()
+    assert summary.matched == 0
+    assert summary.unmatched == 0
+    assert summary.failed == 1
+    assert station.latitude is None
+    assert station.longitude is None
+    assert station.geocoding_status == FuelStation.GeocodingStatus.PENDING
+    assert station.is_active is False
+
+
+@pytest.mark.django_db
 def test_census_batch_station_geocoder_posts_and_parses(monkeypatch, settings):
     from fuel.models import FuelStation
 
@@ -332,6 +404,112 @@ def test_census_batch_station_geocoder_posts_and_parses(monkeypatch, settings):
             3,
         )
     ]
+
+
+@pytest.mark.django_db
+def test_census_batch_station_geocoder_rejects_missing_response_id(monkeypatch, settings):
+    from fuel.models import FuelStation
+
+    settings.CENSUS_GEOCODER_BASE_URL = "https://example.test/geocoder"
+    first = FuelStation.objects.create(
+        opis_truckstop_id="123",
+        name="Austin Fuel",
+        address="I-35",
+        city="Austin",
+        state="TX",
+        rack_id="1",
+        retail_price=Decimal("3.249"),
+        source_row_hash="missing-response-first",
+    )
+    second = FuelStation.objects.create(
+        opis_truckstop_id="124",
+        name="Dallas Fuel",
+        address="I-45",
+        city="Dallas",
+        state="TX",
+        rack_id="1",
+        retail_price=Decimal("3.249"),
+        source_row_hash="missing-response-second",
+    )
+
+    class FakeBatchResponse:
+        text = f'"{first.id}","I-35, Austin, TX","Match","Exact","I-35, Austin, TX","-97.743100,30.267200","1","L"\n'
+
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr(
+        "routing.services.geocoding.requests.post",
+        lambda *args, **kwargs: FakeBatchResponse(),
+    )
+
+    with pytest.raises(RoutingProviderError, match="missing submitted station IDs"):
+        CensusBatchStationGeocoder().geocode_stations([first, second])
+
+
+@pytest.mark.django_db
+def test_census_batch_station_geocoder_rejects_unknown_response_id(monkeypatch, settings):
+    from fuel.models import FuelStation
+
+    settings.CENSUS_GEOCODER_BASE_URL = "https://example.test/geocoder"
+    station = FuelStation.objects.create(
+        opis_truckstop_id="123",
+        name="Austin Fuel",
+        address="I-35",
+        city="Austin",
+        state="TX",
+        rack_id="1",
+        retail_price=Decimal("3.249"),
+        source_row_hash="unknown-response-station",
+    )
+
+    class FakeBatchResponse:
+        text = '"999999","I-35, Austin, TX","Match","Exact","I-35, Austin, TX","-97.743100,30.267200","1","L"\n'
+
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr(
+        "routing.services.geocoding.requests.post",
+        lambda *args, **kwargs: FakeBatchResponse(),
+    )
+
+    with pytest.raises(RoutingProviderError, match="unknown station IDs"):
+        CensusBatchStationGeocoder().geocode_stations([station])
+
+
+@pytest.mark.django_db
+def test_census_batch_station_geocoder_rejects_duplicate_response_id(monkeypatch, settings):
+    from fuel.models import FuelStation
+
+    settings.CENSUS_GEOCODER_BASE_URL = "https://example.test/geocoder"
+    station = FuelStation.objects.create(
+        opis_truckstop_id="123",
+        name="Austin Fuel",
+        address="I-35",
+        city="Austin",
+        state="TX",
+        rack_id="1",
+        retail_price=Decimal("3.249"),
+        source_row_hash="duplicate-response-station",
+    )
+
+    class FakeBatchResponse:
+        text = (
+            f'"{station.id}","I-35, Austin, TX","Match","Exact","I-35, Austin, TX","-97.743100,30.267200","1","L"\n'
+            f'"{station.id}","I-35, Austin, TX","Match","Exact","I-35, Austin, TX","-97.743100,30.267200","1","L"\n'
+        )
+
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr(
+        "routing.services.geocoding.requests.post",
+        lambda *args, **kwargs: FakeBatchResponse(),
+    )
+
+    with pytest.raises(RoutingProviderError, match="duplicate station ID"):
+        CensusBatchStationGeocoder().geocode_stations([station])
 
 
 def test_census_batch_station_geocoder_maps_http_failure(monkeypatch):

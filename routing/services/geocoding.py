@@ -98,6 +98,7 @@ def parse_census_batch_response(response_text: str) -> list[StationGeocodeResult
     try:
         reader = csv.reader(StringIO(response_text))
         results = []
+        seen_station_ids = set()
         for row in reader:
             if not row:
                 continue
@@ -105,6 +106,12 @@ def parse_census_batch_response(response_text: str) -> list[StationGeocodeResult
                 raise ValueError("Census batch row has too few columns")
 
             station_id = row[0]
+            if station_id in seen_station_ids:
+                raise RoutingProviderError(
+                    f"Census batch geocoder returned duplicate station ID: {station_id}"
+                )
+            seen_station_ids.add(station_id)
+
             status = row[2]
             if status == "No_Match":
                 results.append(
@@ -160,9 +167,26 @@ class CensusBatchStationGeocoder:
                 timeout=self.timeout,
             )
             response.raise_for_status()
-            return parse_census_batch_response(response.text)
+            results = parse_census_batch_response(response.text)
         except requests.RequestException as exc:
             raise RoutingProviderError("Census batch geocoder failed") from exc
+
+        submitted_ids = {str(station.id) for station in stations}
+        returned_ids = {result.station_id for result in results}
+        unknown_ids = returned_ids - submitted_ids
+        if unknown_ids:
+            raise RoutingProviderError(
+                "Census batch geocoder returned unknown station IDs: "
+                f"{', '.join(sorted(unknown_ids))}"
+            )
+        missing_ids = submitted_ids - returned_ids
+        if missing_ids:
+            raise RoutingProviderError(
+                "Census batch geocoder missing submitted station IDs: "
+                f"{', '.join(sorted(missing_ids))}"
+            )
+
+        return results
 
 
 def apply_station_geocoding_results(results) -> StationGeocodingSummary:
@@ -182,6 +206,10 @@ def apply_station_geocoding_results(results) -> StationGeocodingSummary:
             continue
 
         if result.matched:
+            if not _has_valid_station_coordinates(result.latitude, result.longitude):
+                failed += 1
+                continue
+
             station.latitude = result.latitude
             station.longitude = result.longitude
             station.geocoding_score = result.score
@@ -207,6 +235,18 @@ def apply_station_geocoding_results(results) -> StationGeocodingSummary:
         )
 
     return StationGeocodingSummary(matched=matched, unmatched=unmatched, failed=failed)
+
+
+def _has_valid_station_coordinates(
+    latitude: Decimal | None,
+    longitude: Decimal | None,
+) -> bool:
+    return (
+        latitude is not None
+        and longitude is not None
+        and Decimal("-90") <= latitude <= Decimal("90")
+        and Decimal("-180") <= longitude <= Decimal("180")
+    )
 
 
 def resolve_location(query: str, provider: SingleGeocoder | None = None) -> GeocodedLocation:
