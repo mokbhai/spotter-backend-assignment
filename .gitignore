@@ -1,4 +1,6 @@
 .venv/
+.env
+.env.local
 db.sqlite3
 .pytest_cache/
 __pycache__/
@@ -6,3 +8,4 @@ __pycache__/
 .worktrees/
 .superpowers/
 .playwright-cli/
+staticfiles/

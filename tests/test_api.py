@@ -176,6 +176,23 @@ def test_database_uses_sqlite(settings):
     )
 
 
+def test_database_path_can_be_configured_for_container(monkeypatch):
+    import importlib
+
+    monkeypatch.setenv("SPOTTER_DB_PATH", "/app/data/db.sqlite3")
+
+    from spotter_backend import settings as project_settings
+
+    project_settings = importlib.reload(project_settings)
+
+    assert project_settings.DATABASES["default"]["NAME"] == "/app/data/db.sqlite3"
+
+
+def test_static_files_are_configured_for_production_container(settings):
+    assert "whitenoise.middleware.WhiteNoiseMiddleware" in settings.MIDDLEWARE
+    assert str(settings.STATIC_ROOT).endswith("staticfiles")
+
+
 def test_routes_are_mounted_under_api_routes(settings):
     from spotter_backend.urls import urlpatterns
 

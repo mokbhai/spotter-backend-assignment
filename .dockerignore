@@ -1,0 +1,12 @@
+.git
+.gitignore
+.venv
+.pytest_cache
+.playwright-cli
+.superpowers
+.worktrees
+__pycache__
+*.pyc
+db.sqlite3
+staticfiles
+.DS_Store

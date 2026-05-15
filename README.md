@@ -9,8 +9,8 @@ fuel cost for the trip.
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
-pip install -r requirements.txt
-python manage.py migrate
+make install
+make migrate
 ```
 
 ## Import Fuel Prices
@@ -18,14 +18,14 @@ python manage.py migrate
 Load the provided CSV without calling the external Census batch geocoder:
 
 ```bash
-python manage.py import_fuel_prices fuel-prices-for-be-assessment.csv --skip-geocoding
+make import-fuel-prices
 ```
 
 Load the CSV and geocode pending stations through the Census batch geocoder when
 network access is acceptable:
 
 ```bash
-python manage.py import_fuel_prices fuel-prices-for-be-assessment.csv
+make import-fuel-prices-geocode
 ```
 
 The import command reads the CSV, creates or updates fuel station price/name
@@ -38,7 +38,7 @@ highway-style station addresses do not leave large route coverage gaps.
 ## Run Server
 
 ```bash
-python manage.py runserver
+make run
 ```
 
 Runtime settings can be overridden with environment variables:
@@ -47,6 +47,41 @@ Runtime settings can be overridden with environment variables:
 - `SPOTTER_DEBUG`
 - `SPOTTER_ALLOWED_HOSTS`
 - `SPOTTER_FUEL_PLAN_THROTTLE`
+
+## Run Production Server With Docker
+
+Build the image:
+
+```bash
+make docker-build
+```
+
+Run the API with Gunicorn:
+
+```bash
+make docker-run SPOTTER_SECRET_KEY='replace-this-secret'
+```
+
+On first run, import the provided fuel-price CSV into the mounted SQLite
+database:
+
+```bash
+make docker-run-import SPOTTER_SECRET_KEY='replace-this-secret'
+```
+
+The container serves the API at `http://127.0.0.1:8000/api/routes/fuel-plan/`
+and the architecture console at
+`http://127.0.0.1:8000/static/routing/architecture-api-demo.html`.
+
+Useful Make variables:
+
+- `PORT`: port used inside the Django/Gunicorn process. Defaults to `8000`.
+- `HOST_PORT`: host port published by Docker. Defaults to `8000`.
+- `IMAGE`: Docker image name. Defaults to `spotter-backend`.
+- `TAG`: Docker image tag. Defaults to `local`.
+- `DATA_VOLUME`: Docker volume mounted at `/app/data`. Defaults to `spotter-data`.
+- `SPOTTER_ALLOWED_HOSTS`: comma-separated Django allowed hosts.
+- `SPOTTER_SECRET_KEY`: required production Django secret key.
 
 ## API
 
@@ -113,7 +148,7 @@ Import the collection into Postman and set the `base_url` variable to your serve
 ## Tests
 
 ```bash
-pytest
+make test
 ```
 
 Automated tests mock external services and should not depend on live OSRM or
