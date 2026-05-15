@@ -1,7 +1,8 @@
 import csv
-from io import StringIO
 from dataclasses import dataclass
 from decimal import Decimal, DecimalException
+from functools import lru_cache
+from io import StringIO
 from typing import Protocol
 
 import requests
@@ -35,13 +36,45 @@ class StationGeocodingSummary:
     failed: int
 
 
+@dataclass(frozen=True)
+class CityStateLocation:
+    latitude: Decimal
+    longitude: Decimal
+
+
+@dataclass(frozen=True)
+class CityStateGeocodingSummary:
+    approximated: int
+    unmatched: int
+
+
 class SingleGeocoder(Protocol):
     def geocode_one(self, query: str) -> GeocodedLocation | None:
         ...
 
 
+CITY_STATE_PROVIDER = "geonames_city_state"
+
+
 def normalize_query(query: str) -> str:
     return " ".join(query.strip().lower().split())
+
+
+def normalize_city_name(city: str) -> str:
+    return " ".join(city.casefold().replace(".", "").split())
+
+
+def parse_city_state_query(query: str) -> tuple[str, str] | None:
+    parts = [part.strip() for part in query.split(",")]
+    if len(parts) != 2:
+        return None
+
+    city, state = parts
+    state_code = state.upper()
+    if not city or len(state_code) != 2 or not state_code.isalpha():
+        return None
+
+    return city, state_code
 
 
 class CensusGeocoder:
@@ -102,7 +135,7 @@ def parse_census_batch_response(response_text: str) -> list[StationGeocodeResult
         for row in reader:
             if not row:
                 continue
-            if len(row) < 6:
+            if len(row) < 3:
                 raise ValueError("Census batch row has too few columns")
 
             station_id = row[0]
@@ -113,7 +146,7 @@ def parse_census_batch_response(response_text: str) -> list[StationGeocodeResult
             seen_station_ids.add(station_id)
 
             status = row[2]
-            if status == "No_Match":
+            if status in {"No_Match", "Tie"}:
                 results.append(
                     StationGeocodeResult(
                         station_id=station_id,
@@ -126,6 +159,9 @@ def parse_census_batch_response(response_text: str) -> list[StationGeocodeResult
 
             if status != "Match":
                 raise ValueError(f"Unsupported Census batch status: {status}")
+
+            if len(row) < 6:
+                raise ValueError("Census batch match row has too few columns")
 
             coordinate_parts = row[5].split(",")
             if len(coordinate_parts) != 2:
@@ -149,7 +185,7 @@ def parse_census_batch_response(response_text: str) -> list[StationGeocodeResult
 
 class CensusBatchStationGeocoder:
     def __init__(self, timeout: float | None = None):
-        self.timeout = timeout or getattr(settings, "CENSUS_GEOCODER_TIMEOUT", 10)
+        self.timeout = timeout or getattr(settings, "CENSUS_BATCH_GEOCODER_TIMEOUT", 60)
 
     def geocode_stations(self, stations) -> list[StationGeocodeResult]:
         csv_content = build_census_batch_input(stations)
@@ -187,6 +223,52 @@ class CensusBatchStationGeocoder:
             )
 
         return results
+
+
+class CityStateGeocoder:
+    def __init__(self, cities: dict | None = None):
+        self._city_index = self._build_city_index(cities)
+
+    def geocode_city_state(self, city: str, state: str) -> CityStateLocation | None:
+        city_record = self._city_index.get((normalize_city_name(city), state.upper()))
+        if city_record is None:
+            return None
+
+        return CityStateLocation(
+            latitude=Decimal(str(city_record["latitude"])).quantize(Decimal("0.000001")),
+            longitude=Decimal(str(city_record["longitude"])).quantize(Decimal("0.000001")),
+        )
+
+    def _build_city_index(self, cities: dict | None):
+        if cities is None:
+            import geonamescache
+
+            cities = geonamescache.GeonamesCache().get_cities()
+
+        city_index = {}
+        for city_record in cities.values():
+            if city_record.get("countrycode") != "US":
+                continue
+
+            state = city_record.get("admin1code")
+            names = {city_record.get("name", "")}
+            names.update(city_record.get("alternatenames") or [])
+            for name in names:
+                key = (normalize_city_name(name), state)
+                existing = city_index.get(key)
+                if existing is None or _population(city_record) > _population(existing):
+                    city_index[key] = city_record
+
+        return city_index
+
+
+def _population(city_record) -> int:
+    return int(city_record.get("population") or 0)
+
+
+@lru_cache(maxsize=1)
+def get_city_state_geocoder() -> CityStateGeocoder:
+    return CityStateGeocoder()
 
 
 def apply_station_geocoding_results(results) -> StationGeocodingSummary:
@@ -237,6 +319,41 @@ def apply_station_geocoding_results(results) -> StationGeocodingSummary:
     return StationGeocodingSummary(matched=matched, unmatched=unmatched, failed=failed)
 
 
+def apply_city_state_geocoding_fallback(
+    stations,
+    geocoder: CityStateGeocoder | None = None,
+) -> CityStateGeocodingSummary:
+    from fuel.models import FuelStation
+
+    geocoder = geocoder or CityStateGeocoder()
+    approximated = 0
+    unmatched = 0
+
+    for station in stations:
+        location = geocoder.geocode_city_state(station.city, station.state)
+        if location is None:
+            unmatched += 1
+            continue
+
+        station.latitude = location.latitude
+        station.longitude = location.longitude
+        station.geocoding_score = None
+        station.geocoding_status = FuelStation.GeocodingStatus.CITY_APPROXIMATE
+        station.is_active = True
+        station.save(
+            update_fields=[
+                "latitude",
+                "longitude",
+                "geocoding_score",
+                "geocoding_status",
+                "is_active",
+            ]
+        )
+        approximated += 1
+
+    return CityStateGeocodingSummary(approximated=approximated, unmatched=unmatched)
+
+
 def _has_valid_station_coordinates(
     latitude: Decimal | None,
     longitude: Decimal | None,
@@ -265,6 +382,33 @@ def resolve_location(query: str, provider: SingleGeocoder | None = None) -> Geoc
             provider=cached.provider,
             raw_response=cached.raw_response,
         )
+
+    city_state = parse_city_state_query(query)
+    if city_state is not None:
+        city, state = city_state
+        city_state_location = get_city_state_geocoder().geocode_city_state(city, state)
+        if city_state_location is not None:
+            raw_response = {
+                "city": city,
+                "state": state,
+                "precision": "city_state",
+            }
+            LocationCache.objects.update_or_create(
+                query=normalized_query,
+                defaults={
+                    "latitude": city_state_location.latitude,
+                    "longitude": city_state_location.longitude,
+                    "provider": CITY_STATE_PROVIDER,
+                    "raw_response": raw_response,
+                },
+            )
+            return GeocodedLocation(
+                query=normalized_query,
+                latitude=city_state_location.latitude,
+                longitude=city_state_location.longitude,
+                provider=CITY_STATE_PROVIDER,
+                raw_response=raw_response,
+            )
 
     geocoder = provider or CensusGeocoder()
     location = geocoder.geocode_one(query)

@@ -1,9 +1,12 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
+from django.conf import settings
+
 from fuel.models import FuelStation
 from routing.services.geometry import (
     cumulative_route_miles,
+    downsample_route_points,
     expanded_bounding_box,
     project_point_to_route,
     route_points,
@@ -22,6 +25,15 @@ def find_candidate_stations(route_geometry, corridor_miles):
     min_lat, max_lat, min_lng, max_lng = expanded_bounding_box(points, corridor_miles)
     route_miles = cumulative_route_miles(points)
     corridor_miles = float(corridor_miles)
+    projection_spacing_miles = min(
+        getattr(settings, "ROUTE_CANDIDATE_PROJECTION_SPACING_MILES", 5),
+        max(corridor_miles / 2, 0.25),
+    )
+    projection_points, projection_route_miles = downsample_route_points(
+        points,
+        route_miles,
+        projection_spacing_miles,
+    )
     candidates = []
 
     stations = FuelStation.objects.filter(
@@ -38,8 +50,8 @@ def find_candidate_stations(route_geometry, corridor_miles):
         projection = project_point_to_route(
             float(station.latitude),
             float(station.longitude),
-            points,
-            route_miles=route_miles,
+            projection_points,
+            route_miles=projection_route_miles,
         )
         if projection.distance_to_route_miles <= corridor_miles:
             candidates.append(

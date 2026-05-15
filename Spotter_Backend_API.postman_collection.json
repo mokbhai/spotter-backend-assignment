@@ -1,0 +1,112 @@
+{
+  "info": {
+    "name": "Spotter Backend API",
+    "description": "Django REST API for route fuel planning",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Fuel Plan",
+      "item": [
+        {
+          "name": "Create Fuel Plan - Coordinates",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": {\n    \"lat\": 30.2672,\n    \"lng\": -97.7431\n  },\n  \"destination\": {\n    \"lat\": 39.7392,\n    \"lng\": -104.9903\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/routes/fuel-plan/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "routes",
+                "fuel-plan",
+                ""
+              ]
+            },
+            "description": "Create a fuel plan using coordinate inputs (Austin, TX to Denver, CO)"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Fuel Plan - Addresses",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": \"Austin, TX\",\n  \"destination\": \"Denver, CO\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/routes/fuel-plan/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "routes",
+                "fuel-plan",
+                ""
+              ]
+            },
+            "description": "Create a fuel plan using address string inputs"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Fuel Plan - Custom Parameters",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"start\": {\n    \"lat\": 40.7128,\n    \"lng\": -74.0060\n  },\n  \"destination\": {\n    \"lat\": 34.0522,\n    \"lng\": -118.2437\n  },\n  \"corridor_miles\": 15,\n  \"max_range_miles\": 400,\n  \"miles_per_gallon\": 12.5\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/routes/fuel-plan/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "routes",
+                "fuel-plan",
+                ""
+              ]
+            },
+            "description": "Create a fuel plan with custom parameters (New York to Los Angeles with 15-mile corridor, 400-mile range, 12.5 MPG)"
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints for fuel planning operations"
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000",
+      "type": "string"
+    }
+  ]
+}

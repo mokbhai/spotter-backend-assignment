@@ -5,6 +5,7 @@ class FuelStation(models.Model):
     class GeocodingStatus(models.TextChoices):
         PENDING = "pending", "Pending"
         MATCHED = "matched", "Matched"
+        CITY_APPROXIMATE = "city_approximate", "City approximate"
         UNMATCHED = "unmatched", "Unmatched"
         FAILED = "failed", "Failed"
 

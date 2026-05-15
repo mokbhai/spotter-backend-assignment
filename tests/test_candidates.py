@@ -6,6 +6,8 @@ from fuel.models import FuelStation
 from routing.services.candidates import find_candidate_stations
 from routing.services.geometry import (
     cumulative_route_miles,
+    downsample_linestring_geometry,
+    downsample_route_points,
     expanded_bounding_box,
     haversine_miles,
     project_point_to_route,
@@ -118,6 +120,34 @@ def test_project_point_to_route_uses_cumulative_route_mileage_basis():
 
     assert projection.distance_to_route_miles == pytest.approx(0, abs=1)
     assert projection.route_mile == pytest.approx(total_route_miles / 2, rel=0.01)
+
+
+def test_downsample_route_points_preserves_endpoints_and_route_miles():
+    points = [(0, 0), (0, 0.1), (0, 0.2), (0, 0.3)]
+    route_miles = [0, 6, 12, 18]
+
+    sampled_points, sampled_miles = downsample_route_points(
+        points,
+        route_miles,
+        spacing_miles=10,
+    )
+
+    assert sampled_points == [(0, 0), (0, 0.2), (0, 0.3)]
+    assert sampled_miles == [0, 12, 18]
+
+
+def test_downsample_linestring_geometry_keeps_geojson_coordinate_order():
+    geometry = {
+        "type": "LineString",
+        "coordinates": [[0, 0], [0.1, 0], [0.2, 0], [0.3, 0]],
+    }
+
+    sampled = downsample_linestring_geometry(geometry, spacing_miles=10)
+
+    assert sampled == {
+        "type": "LineString",
+        "coordinates": [[0.0, 0.0], [0.2, 0.0], [0.3, 0.0]],
+    }
 
 
 @pytest.mark.django_db

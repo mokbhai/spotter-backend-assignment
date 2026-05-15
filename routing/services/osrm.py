@@ -21,6 +21,7 @@ class OSRMClient:
     def __init__(self, base_url: str | None = None, timeout: float = 15):
         self.base_url = (base_url or settings.OSRM_BASE_URL).rstrip("/")
         self.timeout = timeout
+        self.overview = getattr(settings, "OSRM_ROUTE_OVERVIEW", "full")
 
     def route(
         self,
@@ -34,7 +35,7 @@ class OSRMClient:
             f"{start_lng},{start_lat};{dest_lng},{dest_lat}"
         )
         params = {
-            "overview": "full",
+            "overview": self.overview,
             "geometries": "geojson",
             "steps": "false",
         }

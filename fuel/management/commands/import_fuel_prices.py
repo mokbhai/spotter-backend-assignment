@@ -5,6 +5,7 @@ from routing.exceptions import RoutingProviderError
 from routing.services.fuel_import import import_fuel_price_rows, parse_fuel_price_csv
 from routing.services.geocoding import (
     CensusBatchStationGeocoder,
+    apply_city_state_geocoding_fallback,
     apply_station_geocoding_results,
 )
 
@@ -41,19 +42,29 @@ class Command(BaseCommand):
                 geocoding_status=FuelStation.GeocodingStatus.PENDING
             )
         )
-        if not stations:
+        if stations:
+            try:
+                results = CensusBatchStationGeocoder().geocode_stations(stations)
+            except RoutingProviderError as exc:
+                raise CommandError(f"Station batch geocoding failed: {exc}") from exc
+
+            geocoding_summary = apply_station_geocoding_results(results)
+            self.stdout.write(
+                "Station geocoding summary: "
+                f"matched={geocoding_summary.matched} "
+                f"unmatched={geocoding_summary.unmatched} "
+                f"failed={geocoding_summary.failed}"
+            )
+        else:
             self.stdout.write("No pending stations to geocode.")
-            return
 
-        try:
-            results = CensusBatchStationGeocoder().geocode_stations(stations)
-        except RoutingProviderError as exc:
-            raise CommandError(f"Station batch geocoding failed: {exc}") from exc
-
-        geocoding_summary = apply_station_geocoding_results(results)
-        self.stdout.write(
-            "Station geocoding summary: "
-            f"matched={geocoding_summary.matched} "
-            f"unmatched={geocoding_summary.unmatched} "
-            f"failed={geocoding_summary.failed}"
+        fallback_stations = list(
+            FuelStation.objects.filter(latitude__isnull=True, longitude__isnull=True)
         )
+        if fallback_stations:
+            fallback_summary = apply_city_state_geocoding_fallback(fallback_stations)
+            self.stdout.write(
+                "City/state approximation summary: "
+                f"approximated={fallback_summary.approximated} "
+                f"unmatched={fallback_summary.unmatched}"
+            )

@@ -32,13 +32,14 @@ class FuelPlanView(APIView):
                 status=422,
             )
         except NoFeasibleFuelPlanError:
+            max_range_miles = serializer.validated_data["max_range_miles"]
             return Response(
                 {
                     "error": "no_feasible_fuel_plan",
                     "message": (
                         "A route was found, but the available fuel-price dataset "
                         "does not contain enough reachable fuel stations to complete "
-                        "the trip within a 500-mile vehicle range."
+                        f"the trip within a {max_range_miles}-mile vehicle range."
                     ),
                 },
                 status=422,

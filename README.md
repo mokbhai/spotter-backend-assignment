@@ -31,7 +31,9 @@ python manage.py import_fuel_prices fuel-prices-for-be-assessment.csv
 The import command reads the CSV, creates or updates fuel station price/name
 data, and preserves existing station geocoding state when those rows already
 have coordinates. Without `--skip-geocoding`, it geocodes stations still marked
-as pending.
+as pending. Rows that the Census batch geocoder cannot match exactly are then
+approximated by US city/state coordinates from the local GeoNames dataset so
+highway-style station addresses do not leave large route coverage gaps.
 
 ## Run Server
 
@@ -66,8 +68,9 @@ curl -X POST http://127.0.0.1:8000/api/routes/fuel-plan/ \
   }'
 ```
 
-Address-string input is also supported. Address requests use the Census
-Geocoder at request time and cache resolved locations locally:
+Address-string input is also supported. Simple `City, ST` requests resolve from
+the local GeoNames city dataset and are cached locally; other address strings
+use the Census Geocoder at request time and are cached locally:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/routes/fuel-plan/ \
@@ -80,7 +83,7 @@ curl -X POST http://127.0.0.1:8000/api/routes/fuel-plan/ \
 
 Successful responses include:
 
-- `route`: route distance and OSRM GeoJSON `LineString` geometry.
+- `route`: route distance and full OSRM GeoJSON `LineString` geometry.
 - `fuel_plan`: selected stops, gallons, cost, price per gallon, total gallons,
   total cost, range, MPG, and currency.
 - `fuel_plan.starting_fuel_assumption`: an explicit estimate for fuel used
@@ -89,6 +92,16 @@ Successful responses include:
   keeping total gallons and total cost tied to the full route.
 - `warnings`: planner warnings such as arrival fuel notes.
 - `metadata`: provider metadata, including the routing provider.
+
+## Postman Collection
+
+A Postman collection is available at `Spotter_Backend_API.postman_collection.json` with pre-configured requests for:
+
+- Fuel plan creation with coordinate inputs
+- Fuel plan creation with address inputs
+- Fuel plan creation with custom parameters
+
+Import the collection into Postman and set the `base_url` variable to your server URL (default: `http://127.0.0.1:8000`).
 
 ## Tests
 
@@ -102,7 +115,10 @@ Census API availability.
 ## External Services
 
 - OSRM route API for driving route calculation.
-- Census Geocoder for single address geocoding and batch station geocoding.
+- Census Geocoder for street/freeform address geocoding and batch station
+  geocoding.
+- GeoNames city data for request-time `City, ST` input and import-time
+  city/state station-coordinate fallback.
 
 ## Important Assumptions
 
@@ -110,4 +126,7 @@ Census API availability.
 - Fuel economy is 10 MPG by default.
 - The planner does not give free starting fuel credit; required gallons are
   purchased from selected stops.
-- Fuel stations are selected from active, geocoded rows imported from the CSV.
+- Fuel stations are selected from active imported rows with either exact Census
+  coordinates or city/state fallback coordinates.
+- Routes can still return `no_feasible_fuel_plan` when the provided fuel-price
+  dataset has no station coverage within the requested vehicle range.

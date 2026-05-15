@@ -85,6 +85,40 @@ def cumulative_route_miles(points):
     return totals
 
 
+def downsample_route_points(points, route_miles, spacing_miles):
+    if len(points) < 2:
+        raise ValueError("At least two route points are required.")
+    if len(route_miles) != len(points):
+        raise ValueError("Route mileage count must match route point count.")
+
+    spacing_miles = _validate_positive_spacing_miles(spacing_miles)
+    sampled_points = [points[0]]
+    sampled_miles = [route_miles[0]]
+    last_kept_mile = route_miles[0]
+
+    for point, route_mile in zip(points[1:-1], route_miles[1:-1]):
+        if route_mile - last_kept_mile >= spacing_miles:
+            sampled_points.append(point)
+            sampled_miles.append(route_mile)
+            last_kept_mile = route_mile
+
+    if sampled_points[-1] != points[-1]:
+        sampled_points.append(points[-1])
+        sampled_miles.append(route_miles[-1])
+
+    return sampled_points, sampled_miles
+
+
+def downsample_linestring_geometry(geometry, spacing_miles):
+    points = route_points(geometry)
+    route_miles = cumulative_route_miles(points)
+    sampled_points, _ = downsample_route_points(points, route_miles, spacing_miles)
+    return {
+        "type": "LineString",
+        "coordinates": [[lng, lat] for lat, lng in sampled_points],
+    }
+
+
 def project_point_to_route(lat, lng, points, route_miles=None):
     if len(points) < 2:
         raise ValueError("At least two route points are required.")
@@ -169,4 +203,11 @@ def _validate_corridor_miles(miles):
     if not isfinite(miles) or miles < 0:
         raise ValueError("Corridor miles must be a finite non-negative number.")
 
+    return miles
+
+
+def _validate_positive_spacing_miles(miles):
+    miles = _validate_corridor_miles(miles)
+    if miles <= 0:
+        raise ValueError("Spacing miles must be positive.")
     return miles

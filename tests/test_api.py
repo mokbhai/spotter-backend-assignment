@@ -81,6 +81,23 @@ def test_fuel_plan_endpoint_maps_no_feasible_plan(monkeypatch):
     )
 
 
+def test_fuel_plan_endpoint_uses_request_range_in_no_feasible_message(monkeypatch):
+    def fake_build_route_fuel_plan(**kwargs):
+        raise NoFeasibleFuelPlanError("gap exceeds requested range")
+
+    monkeypatch.setattr(
+        "routing.views.build_route_fuel_plan", fake_build_route_fuel_plan
+    )
+
+    payload = coordinate_request()
+    payload["max_range_miles"] = 400
+
+    response = APIClient().post(FUEL_PLAN_URL, payload, format="json")
+
+    assert response.status_code == 422
+    assert "400-mile vehicle range" in response.json()["message"]
+
+
 def test_fuel_plan_endpoint_maps_location_not_found(monkeypatch):
     def fake_build_route_fuel_plan(**kwargs):
         raise LocationNotFoundError("geocoder returned ZERO_RESULTS for raw query")
@@ -177,10 +194,13 @@ def test_allowed_hosts_are_local_only():
 
 def test_required_route_planner_settings(settings):
     assert settings.OSRM_BASE_URL == "https://router.project-osrm.org"
+    assert settings.OSRM_ROUTE_OVERVIEW == "full"
     assert (
         settings.CENSUS_GEOCODER_BASE_URL
         == "https://geocoding.geo.census.gov/geocoder"
     )
+    assert settings.CENSUS_BATCH_GEOCODER_TIMEOUT == 60
+    assert settings.ROUTE_CANDIDATE_PROJECTION_SPACING_MILES == 5
     assert settings.DEFAULT_ROUTE_CORRIDOR_MILES == 10
     assert settings.MAX_ROUTE_CORRIDOR_MILES == 25
     assert settings.DEFAULT_MAX_RANGE_MILES == 500

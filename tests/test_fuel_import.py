@@ -447,6 +447,47 @@ def test_import_command_can_apply_batch_geocoding(tmp_path, capsys, monkeypatch)
 
 
 @pytest.mark.django_db
+def test_import_command_applies_city_state_fallback_for_unmatched_station(
+    tmp_path,
+    capsys,
+    monkeypatch,
+):
+    path = tmp_path / "fuel.csv"
+    path.write_text(
+        "OPIS Truckstop ID,Truckstop Name,Address,City,State,Rack ID,Retail Price\n"
+        "79,VEGAS TRUCK STOP,I-15,Las Vegas,NV,243,3.249\n",
+        encoding="utf-8",
+    )
+
+    class FakeBatchGeocoder:
+        def geocode_stations(self, stations):
+            return [
+                StationGeocodeResult(
+                    station_id=str(stations[0].id),
+                    matched=False,
+                    latitude=None,
+                    longitude=None,
+                )
+            ]
+
+    monkeypatch.setattr(
+        "fuel.management.commands.import_fuel_prices.CensusBatchStationGeocoder",
+        FakeBatchGeocoder,
+    )
+
+    call_command("import_fuel_prices", str(path))
+
+    station = FuelStation.objects.get(opis_truckstop_id="79")
+    assert station.is_active is True
+    assert station.geocoding_status == FuelStation.GeocodingStatus.CITY_APPROXIMATE
+    assert station.latitude == Decimal("36.174970")
+    assert station.longitude == Decimal("-115.137220")
+    output = capsys.readouterr().out
+    assert "Station geocoding summary: matched=0 unmatched=1 failed=0" in output
+    assert "City/state approximation summary: approximated=1 unmatched=0" in output
+
+
+@pytest.mark.django_db
 def test_import_command_reports_no_pending_stations(tmp_path, capsys):
     path = tmp_path / "fuel.csv"
     path.write_text(

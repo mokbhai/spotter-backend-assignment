@@ -111,6 +111,36 @@ def test_planner_returns_route_and_fuel_plan_with_coordinate_inputs():
 
 
 @pytest.mark.django_db
+def test_planner_returns_full_route_geometry_for_map_data(settings):
+    settings.ROUTE_GEOMETRY_SPACING_MILES = 100
+    settings.ROUTE_CANDIDATE_PROJECTION_SPACING_MILES = 100
+    create_station()
+    route = Route(
+        distance_miles=20,
+        geometry={
+            "type": "LineString",
+            "coordinates": [
+                [-97, 30],
+                [-97, 30.1],
+                [-97, 30.2],
+                [-97, 30.3],
+            ],
+        },
+    )
+
+    response = build_route_fuel_plan(
+        start={"lat": Decimal("30.000000"), "lng": Decimal("-97.000000")},
+        destination={"lat": Decimal("30.300000"), "lng": Decimal("-97.000000")},
+        corridor_miles=10,
+        max_range_miles=500,
+        miles_per_gallon=Decimal("10"),
+        router=FakeRouter(route),
+    )
+
+    assert response["route"]["geometry"] == route.geometry
+
+
+@pytest.mark.django_db
 def test_planner_accepts_generic_mapping_coordinate_inputs():
     create_station()
     route = Route(

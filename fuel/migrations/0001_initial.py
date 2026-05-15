@@ -40,7 +40,7 @@ class Migration(migrations.Migration):
                 ('retail_price', models.DecimalField(decimal_places=8, max_digits=10)),
                 ('latitude', models.DecimalField(blank=True, decimal_places=6, max_digits=9, null=True)),
                 ('longitude', models.DecimalField(blank=True, decimal_places=6, max_digits=9, null=True)),
-                ('geocoding_status', models.CharField(choices=[('pending', 'Pending'), ('matched', 'Matched'), ('unmatched', 'Unmatched'), ('failed', 'Failed')], default='pending', max_length=16)),
+                ('geocoding_status', models.CharField(choices=[('pending', 'Pending'), ('matched', 'Matched'), ('city_approximate', 'City approximate'), ('unmatched', 'Unmatched'), ('failed', 'Failed')], default='pending', max_length=16)),
                 ('geocoding_score', models.DecimalField(blank=True, decimal_places=3, max_digits=6, null=True)),
                 ('source_row_hash', models.CharField(max_length=64, unique=True)),
                 ('is_active', models.BooleanField(default=False)),

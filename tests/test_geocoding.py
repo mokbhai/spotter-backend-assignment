@@ -8,8 +8,10 @@ from routing.exceptions import LocationNotFoundError, RoutingProviderError
 from routing.services.geocoding import (
     CensusGeocoder,
     CensusBatchStationGeocoder,
+    CityStateGeocoder,
     GeocodedLocation,
     StationGeocodeResult,
+    apply_city_state_geocoding_fallback,
     apply_station_geocoding_results,
     build_census_batch_input,
     normalize_query,
@@ -186,6 +188,30 @@ def test_parse_census_batch_response_marks_no_match():
             longitude=None,
             score=None,
         )
+    ]
+
+
+def test_parse_census_batch_response_marks_short_no_match_and_tie_unmatched():
+    results = parse_census_batch_response(
+        '"124","Missing","No_Match"\n'
+        '"125","Ambiguous","Tie"\n'
+    )
+
+    assert results == [
+        StationGeocodeResult(
+            station_id="124",
+            matched=False,
+            latitude=None,
+            longitude=None,
+            score=None,
+        ),
+        StationGeocodeResult(
+            station_id="125",
+            matched=False,
+            latitude=None,
+            longitude=None,
+            score=None,
+        ),
     ]
 
 
@@ -407,6 +433,41 @@ def test_census_batch_station_geocoder_posts_and_parses(monkeypatch, settings):
 
 
 @pytest.mark.django_db
+def test_census_batch_station_geocoder_uses_batch_timeout_setting(monkeypatch, settings):
+    from fuel.models import FuelStation
+
+    settings.CENSUS_GEOCODER_BASE_URL = "https://example.test/geocoder"
+    settings.CENSUS_BATCH_GEOCODER_TIMEOUT = 60
+    station = FuelStation.objects.create(
+        opis_truckstop_id="123",
+        name="Austin Fuel",
+        address="I-35",
+        city="Austin",
+        state="TX",
+        rack_id="1",
+        retail_price=Decimal("3.249"),
+        source_row_hash="batch-timeout-station",
+    )
+    calls = []
+
+    class FakeBatchResponse:
+        text = f'"{station.id}","I-35, Austin, TX","No_Match"\n'
+
+        def raise_for_status(self):
+            return None
+
+    def fake_post(url, data, files, timeout):
+        calls.append(timeout)
+        return FakeBatchResponse()
+
+    monkeypatch.setattr("routing.services.geocoding.requests.post", fake_post)
+
+    CensusBatchStationGeocoder().geocode_stations([station])
+
+    assert calls == [60]
+
+
+@pytest.mark.django_db
 def test_census_batch_station_geocoder_rejects_missing_response_id(monkeypatch, settings):
     from fuel.models import FuelStation
 
@@ -522,6 +583,41 @@ def test_census_batch_station_geocoder_maps_http_failure(monkeypatch):
         CensusBatchStationGeocoder().geocode_stations([])
 
 
+def test_city_state_geocoder_resolves_known_us_city():
+    location = CityStateGeocoder().geocode_city_state("Las Vegas", "NV")
+
+    assert location is not None
+    assert location.latitude == Decimal("36.174970")
+    assert location.longitude == Decimal("-115.137220")
+
+
+@pytest.mark.django_db
+def test_apply_city_state_geocoding_fallback_marks_station_approximate():
+    from fuel.models import FuelStation
+
+    station = FuelStation.objects.create(
+        opis_truckstop_id="123",
+        name="Vegas Fuel",
+        address="I-15",
+        city="Las Vegas",
+        state="NV",
+        rack_id="1",
+        retail_price=Decimal("3.249"),
+        geocoding_status=FuelStation.GeocodingStatus.UNMATCHED,
+        source_row_hash="city-state-fallback",
+    )
+
+    summary = apply_city_state_geocoding_fallback([station])
+
+    station.refresh_from_db()
+    assert summary.approximated == 1
+    assert summary.unmatched == 0
+    assert station.latitude == Decimal("36.174970")
+    assert station.longitude == Decimal("-115.137220")
+    assert station.geocoding_status == FuelStation.GeocodingStatus.CITY_APPROXIMATE
+    assert station.is_active is True
+
+
 @pytest.mark.django_db
 def test_resolve_location_uses_cache_before_provider():
     LocationCache.objects.create(
@@ -540,12 +636,27 @@ def test_resolve_location_uses_cache_before_provider():
 
 
 @pytest.mark.django_db
+def test_resolve_location_uses_local_city_state_before_provider():
+    provider = MissingGeocoder()
+
+    location = resolve_location(" Austin, TX ", provider=provider)
+
+    assert location.query == "austin, tx"
+    assert location.provider == "geonames_city_state"
+    assert location.latitude == Decimal("30.267150")
+    assert location.longitude == Decimal("-97.743060")
+    assert provider.calls == []
+    cached = LocationCache.objects.get(query="austin, tx")
+    assert cached.provider == "geonames_city_state"
+
+
+@pytest.mark.django_db
 def test_resolve_location_stores_provider_result_with_normalized_query():
-    location = resolve_location("Austin, TX", provider=FakeGeocoder())
+    location = resolve_location("1 Main St, Austin, TX", provider=FakeGeocoder())
 
     assert location.provider == "fake"
-    assert location.query == "austin, tx"
-    cached = LocationCache.objects.get(query="austin, tx")
+    assert location.query == "1 main st, austin, tx"
+    cached = LocationCache.objects.get(query="1 main st, austin, tx")
     assert cached.longitude == Decimal("-97.743100")
     assert cached.raw_response == {"ok": True}
 
