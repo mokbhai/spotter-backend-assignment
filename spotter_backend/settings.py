@@ -40,6 +40,7 @@ MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "spotter_backend.middleware.OpenPanelAPIMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -110,3 +111,14 @@ DEFAULT_ROUTE_CORRIDOR_MILES = 10
 MAX_ROUTE_CORRIDOR_MILES = 25
 DEFAULT_MAX_RANGE_MILES = 500
 DEFAULT_MILES_PER_GALLON = 10
+
+OPENPANEL_CLIENT_ID = os.environ.get(
+    "OPENPANEL_CLIENT_ID",
+    "fdd09eb0-04b6-4dd4-a42c-d06d3d8e98de",
+)
+OPENPANEL_CLIENT_SECRET = os.environ.get("OPENPANEL_CLIENT_SECRET", "")
+OPENPANEL_API_URL = os.environ.get(
+    "OPENPANEL_API_URL",
+    "https://openpanel.jainparichay.in/api",
+).rstrip("/")
+OPENPANEL_DISABLED = env_bool("OPENPANEL_DISABLED", default=False)

@@ -56,6 +56,13 @@ POST route fuel-plan requests to:
 /api/routes/fuel-plan/
 ```
 
+An interactive architecture and API console is available when the Django
+development server is running:
+
+```text
+http://127.0.0.1:8000/static/routing/architecture-api-demo.html
+```
+
 Coordinate input is the fastest path because it does not require request-time
 geocoding:
 
