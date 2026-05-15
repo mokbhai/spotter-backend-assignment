@@ -30,10 +30,12 @@ make import-fuel-prices-geocode
 
 The import command reads the CSV, creates or updates fuel station price/name
 data, and preserves existing station geocoding state when those rows already
-have coordinates. Without `--skip-geocoding`, it geocodes stations still marked
-as pending. Rows that the Census batch geocoder cannot match exactly are then
-approximated by US city/state coordinates from the local GeoNames dataset so
-highway-style station addresses do not leave large route coverage gaps.
+have coordinates. With `--skip-geocoding`, it skips the external Census batch
+call but still approximates missing station coordinates from the local GeoNames
+city/state dataset. Without `--skip-geocoding`, it first geocodes stations still
+marked as pending through Census, then applies the same city/state fallback for
+unmatched rows so highway-style station addresses do not leave large route
+coverage gaps.
 
 ## Run Server
 
@@ -62,11 +64,19 @@ Run the API with Gunicorn:
 make docker-run SPOTTER_SECRET_KEY='replace-this-secret'
 ```
 
-On first run, import the provided fuel-price CSV into the mounted SQLite
-database:
+By default, the container runs migrations, imports the provided fuel-price CSV
+with `--skip-geocoding`, and then starts Gunicorn. To run without importing on
+startup:
 
 ```bash
-make docker-run-import SPOTTER_SECRET_KEY='replace-this-secret'
+make docker-run-no-import SPOTTER_SECRET_KEY='replace-this-secret'
+```
+
+To import and geocode pending stations through the Census batch geocoder on
+startup:
+
+```bash
+make docker-run-import-geocode SPOTTER_SECRET_KEY='replace-this-secret'
 ```
 
 The container serves the API at `http://127.0.0.1:8000/api/routes/fuel-plan/`
@@ -82,6 +92,9 @@ Useful Make variables:
 - `DATA_VOLUME`: Docker volume mounted at `/app/data`. Defaults to `spotter-data`.
 - `SPOTTER_ALLOWED_HOSTS`: comma-separated Django allowed hosts.
 - `SPOTTER_SECRET_KEY`: required production Django secret key.
+- `SPOTTER_RUN_MIGRATIONS`: run migrations on container startup. Defaults to `true`.
+- `SPOTTER_IMPORT_FUEL_PRICES`: import the bundled fuel CSV on startup. Defaults to `true`.
+- `SPOTTER_IMPORT_FUEL_PRICES_GEOCODE`: geocode pending stations during startup import. Defaults to `false`.
 
 ## API
 

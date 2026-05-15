@@ -9,7 +9,7 @@ DATA_VOLUME ?= spotter-data
 SPOTTER_SECRET_KEY ?= replace-this-secret
 SPOTTER_ALLOWED_HOSTS ?= localhost,127.0.0.1
 
-.PHONY: help install migrate import-fuel-prices import-fuel-prices-geocode run check test collectstatic docker-build docker-run docker-run-import
+.PHONY: help install migrate import-fuel-prices import-fuel-prices-geocode run check test collectstatic docker-build docker-run docker-run-no-import docker-run-import docker-run-import-geocode
 
 help:
 	@echo "Available targets:"
@@ -22,8 +22,10 @@ help:
 	@echo "  make test                       Run pytest"
 	@echo "  make collectstatic              Collect static files for production"
 	@echo "  make docker-build               Build production Docker image"
-	@echo "  make docker-run                 Run production Docker container"
-	@echo "  make docker-run-import          Run container and import fuel CSV on startup"
+	@echo "  make docker-run                 Run container, migrate, import fuel CSV, and serve API"
+	@echo "  make docker-run-no-import       Run container without importing fuel CSV on startup"
+	@echo "  make docker-run-import          Run container and force fuel CSV import on startup"
+	@echo "  make docker-run-import-geocode  Run container, import CSV, and geocode pending stations"
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt
@@ -60,11 +62,30 @@ docker-run:
 		-v $(DATA_VOLUME):/app/data \
 		$(IMAGE):$(TAG)
 
+docker-run-no-import:
+	docker run --rm -p $(HOST_PORT):$(PORT) \
+		-e PORT=$(PORT) \
+		-e SPOTTER_SECRET_KEY='$(SPOTTER_SECRET_KEY)' \
+		-e SPOTTER_ALLOWED_HOSTS='$(SPOTTER_ALLOWED_HOSTS)' \
+		-e SPOTTER_IMPORT_FUEL_PRICES=false \
+		-v $(DATA_VOLUME):/app/data \
+		$(IMAGE):$(TAG)
+
 docker-run-import:
 	docker run --rm -p $(HOST_PORT):$(PORT) \
 		-e PORT=$(PORT) \
 		-e SPOTTER_SECRET_KEY='$(SPOTTER_SECRET_KEY)' \
 		-e SPOTTER_ALLOWED_HOSTS='$(SPOTTER_ALLOWED_HOSTS)' \
 		-e SPOTTER_IMPORT_FUEL_PRICES=true \
+		-v $(DATA_VOLUME):/app/data \
+		$(IMAGE):$(TAG)
+
+docker-run-import-geocode:
+	docker run --rm -p $(HOST_PORT):$(PORT) \
+		-e PORT=$(PORT) \
+		-e SPOTTER_SECRET_KEY='$(SPOTTER_SECRET_KEY)' \
+		-e SPOTTER_ALLOWED_HOSTS='$(SPOTTER_ALLOWED_HOSTS)' \
+		-e SPOTTER_IMPORT_FUEL_PRICES=true \
+		-e SPOTTER_IMPORT_FUEL_PRICES_GEOCODE=true \
 		-v $(DATA_VOLUME):/app/data \
 		$(IMAGE):$(TAG)

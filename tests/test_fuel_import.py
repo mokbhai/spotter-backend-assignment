@@ -389,18 +389,21 @@ def test_import_command_loads_csv_without_live_geocoding(tmp_path, capsys):
     path = tmp_path / "fuel.csv"
     path.write_text(
         "OPIS Truckstop ID,Truckstop Name,Address,City,State,Rack ID,Retail Price\n"
-        "79,DELAWARE TRUCK PLAZA,US-13 & US-40,New Castle,DE,243,3.249\n",
+        "79,VEGAS TRUCK STOP,I-15,Las Vegas,NV,243,3.249\n",
         encoding="utf-8",
     )
 
     call_command("import_fuel_prices", str(path), "--skip-geocoding")
 
     station = FuelStation.objects.get(opis_truckstop_id="79")
-    assert station.is_active is False
-    assert station.geocoding_status == FuelStation.GeocodingStatus.PENDING
+    assert station.is_active is True
+    assert station.geocoding_status == FuelStation.GeocodingStatus.CITY_APPROXIMATE
+    assert station.latitude == Decimal("36.174970")
+    assert station.longitude == Decimal("-115.137220")
     output = capsys.readouterr().out
     assert "total=1" in output
-    assert "Skipped station geocoding" in output
+    assert "Skipped Census batch station geocoding" in output
+    assert "City/state approximation summary: approximated=1 unmatched=0" in output
 
 
 @pytest.mark.django_db

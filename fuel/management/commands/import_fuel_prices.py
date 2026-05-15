@@ -34,29 +34,28 @@ class Command(BaseCommand):
         )
 
         if options["skip_geocoding"]:
-            self.stdout.write("Skipped station geocoding.")
-            return
-
-        stations = list(
-            FuelStation.objects.filter(
-                geocoding_status=FuelStation.GeocodingStatus.PENDING
-            )
-        )
-        if stations:
-            try:
-                results = CensusBatchStationGeocoder().geocode_stations(stations)
-            except RoutingProviderError as exc:
-                raise CommandError(f"Station batch geocoding failed: {exc}") from exc
-
-            geocoding_summary = apply_station_geocoding_results(results)
-            self.stdout.write(
-                "Station geocoding summary: "
-                f"matched={geocoding_summary.matched} "
-                f"unmatched={geocoding_summary.unmatched} "
-                f"failed={geocoding_summary.failed}"
-            )
+            self.stdout.write("Skipped Census batch station geocoding.")
         else:
-            self.stdout.write("No pending stations to geocode.")
+            stations = list(
+                FuelStation.objects.filter(
+                    geocoding_status=FuelStation.GeocodingStatus.PENDING
+                )
+            )
+            if stations:
+                try:
+                    results = CensusBatchStationGeocoder().geocode_stations(stations)
+                except RoutingProviderError as exc:
+                    raise CommandError(f"Station batch geocoding failed: {exc}") from exc
+
+                geocoding_summary = apply_station_geocoding_results(results)
+                self.stdout.write(
+                    "Station geocoding summary: "
+                    f"matched={geocoding_summary.matched} "
+                    f"unmatched={geocoding_summary.unmatched} "
+                    f"failed={geocoding_summary.failed}"
+                )
+            else:
+                self.stdout.write("No pending stations to geocode.")
 
         fallback_stations = list(
             FuelStation.objects.filter(latitude__isnull=True, longitude__isnull=True)

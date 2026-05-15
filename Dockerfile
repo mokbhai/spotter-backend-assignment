@@ -5,11 +5,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     SPOTTER_DEBUG=false \
     SPOTTER_DB_PATH=/app/data/db.sqlite3 \
+    SPOTTER_RUN_MIGRATIONS=true \
+    SPOTTER_IMPORT_FUEL_PRICES=true \
+    SPOTTER_IMPORT_FUEL_PRICES_GEOCODE=false \
     PORT=8000
 
 WORKDIR /app
 
 COPY requirements.txt .
+
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt
 
