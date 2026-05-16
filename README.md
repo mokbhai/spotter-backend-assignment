@@ -4,6 +4,25 @@ Django REST API for route fuel planning. It calculates a driving route, selects
 fuel stops from the provided CSV fuel-price dataset, and estimates gallons and
 fuel cost for the trip.
 
+## Demo Walkthrough
+
+<iframe
+  src="https://www.loom.com/embed/5f27a9d24cbb431c9951f8a87ad63386"
+  width="100%"
+  height="420"
+  frameborder="0"
+  webkitallowfullscreen
+  mozallowfullscreen
+  allowfullscreen>
+</iframe>
+
+If your Markdown viewer does not render iframes, watch the walkthrough here:
+<https://www.loom.com/share/5f27a9d24cbb431c9951f8a87ad63386>
+
+## Project Links
+
+- Live demo: <https://spotter.mokshit.jainparichay.in/>
+
 ## Setup
 
 ```bash

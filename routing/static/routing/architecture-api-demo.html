@@ -105,6 +105,12 @@
       background: var(--panel);
     }
 
+    .nav a.external {
+      border-color: var(--line);
+      background: var(--panel);
+      color: var(--ink);
+    }
+
     .hero {
       display: grid;
       grid-template-columns: minmax(0, 1fr) 360px;
@@ -151,6 +157,21 @@
       font-size: 18px;
     }
 
+    .video-panel {
+      border: 2px solid var(--ink);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .video-frame {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border: 0;
+      background: #101817;
+    }
+
     .status-panel {
       border: 2px solid var(--ink);
       background: var(--panel);
@@ -172,6 +193,17 @@
     .status-row strong {
       font-family: var(--mono);
       color: var(--ink);
+    }
+
+    .status-row a {
+      color: var(--green-dark);
+      font-family: var(--mono);
+      font-weight: 900;
+      text-decoration: none;
+    }
+
+    .status-row a:hover {
+      text-decoration: underline;
     }
 
     section { padding: 34px 0; }
@@ -246,6 +278,41 @@
     .flow-step p, .panel p, li {
       color: var(--muted);
       margin: 0;
+    }
+
+    .code-map {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 0;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .code-map dt,
+    .code-map dd {
+      margin: 0;
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .code-map dt {
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 800;
+      background: #f3f7f4;
+      overflow-wrap: anywhere;
+    }
+
+    .code-map dd {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .code-map dt:last-of-type,
+    .code-map dd:last-of-type {
+      border-bottom: 0;
     }
 
     .flow-step code, .panel code, .inline-code {
@@ -425,6 +492,10 @@
       color: #5f410d;
     }
 
+    .callout strong {
+      color: inherit;
+    }
+
     .list {
       display: grid;
       gap: 8px;
@@ -445,6 +516,19 @@
 
       .flow {
         grid-template-columns: 1fr;
+      }
+
+      .code-map {
+        grid-template-columns: 1fr;
+      }
+
+      .code-map dt {
+        border-bottom: 0;
+        padding-bottom: 4px;
+      }
+
+      .code-map dd {
+        padding-top: 4px;
       }
 
       .flow-step::after {
@@ -491,6 +575,9 @@
         <a href="#api-console">API Console</a>
         <a href="#contract">Contract</a>
         <a href="#operations">Operations</a>
+        <a class="external" href="https://spotter.mokshit.jainparichay.in/">Live Demo</a>
+        <a class="external" href="https://www.loom.com/share/5f27a9d24cbb431c9951f8a87ad63386">Loom</a>
+        <a class="external" href="https://github.com/mokbhai/spotter-backend-assignment">GitHub</a>
       </nav>
     </div>
   </header>
@@ -501,9 +588,6 @@
         <div class="eyebrow">Django REST Framework · OSRM · Fuel-price optimizer</div>
         <h1>Architecture console for route fuel planning.</h1>
         <p class="lede">
-          This page explains how the backend turns a start and destination into a route,
-          finds fuel stations near that route, optimizes stops by price and reachability,
-          and returns a JSON fuel plan. It can also call the local API directly.
         </p>
       </div>
       <aside class="status-panel" aria-label="Service facts">
@@ -514,7 +598,15 @@
         <div class="status-row"><span>Throttle</span><strong>60/min</strong></div>
       </aside>
     </section>
-
+ <div class="video-panel" style="margin-top:24px;">
+          <iframe
+            class="video-frame"
+            src="https://www.loom.com/embed/5f27a9d24cbb431c9951f8a87ad63386"
+            title="Spotter backend assignment walkthrough"
+            allow="fullscreen; picture-in-picture"
+            allowfullscreen>
+          </iframe>
+        </div>
     <section id="architecture">
       <h2>System Architecture</h2>
       <div class="flow" aria-label="Request processing flow">
@@ -561,6 +653,50 @@
           <h3>GeoNames city data</h3>
           <p>Simple <code>City, ST</code> inputs and unmatched station rows can use city/state coordinates to avoid avoidable coverage gaps.</p>
         </article>
+      </div>
+
+      <div class="grid two" style="margin-top:16px;">
+        <article class="panel accent">
+          <span class="tag">Demo path</span>
+          <h3>Runtime lifecycle</h3>
+          <ul class="list">
+            <li>Docker startup runs migrations against the mounted SQLite database in <code>/app/data</code>.</li>
+            <li>The bundled CSV imports on startup by default so the demo container is ready for API calls.</li>
+            <li>The offline import path skips live Census batch geocoding but applies local city/state coordinates.</li>
+            <li>Gunicorn serves the API and this static architecture console from the same origin.</li>
+          </ul>
+        </article>
+        <article class="panel accent">
+          <span class="tag">Failure boundaries</span>
+          <h3>Clear API outcomes</h3>
+          <ul class="list">
+            <li>Serializer validation stops malformed requests before provider calls.</li>
+            <li>Unresolved locations and infeasible fuel plans return structured <code>422</code> responses.</li>
+            <li>Routing provider failures return <code>503</code> instead of leaking implementation details.</li>
+            <li>OpenPanel tracking is nonblocking and does not change the API response path.</li>
+          </ul>
+        </article>
+      </div>
+
+      <div class="panel" style="margin-top:16px;">
+        <span class="tag">Code walkthrough map</span>
+        <h3>Where to point during the Loom</h3>
+        <dl class="code-map">
+          <dt>routing/views.py</dt>
+          <dd>DRF endpoint boundary, request validation, error mapping, and analytics event tracking.</dd>
+          <dt>routing/serializers.py</dt>
+          <dd>Input contract for coordinate objects, address strings, and vehicle parameters.</dd>
+          <dt>routing/services/planner.py</dt>
+          <dd>Application orchestration: resolve locations, request route, find candidate stations, build response.</dd>
+          <dt>routing/services/candidates.py</dt>
+          <dd>Route-corridor station filtering and route-mile projection for active imported stations.</dd>
+          <dt>routing/services/optimizer.py</dt>
+          <dd>Reachability and price-based fuel stop selection with Decimal-based gallon and cost calculations.</dd>
+          <dt>fuel/models.py</dt>
+          <dd>Persistent station, price, geocoding state, and request-location cache models.</dd>
+          <dt>docker-entrypoint.sh</dt>
+          <dd>Container startup lifecycle: migrate, optionally import/geocode fuel data, then launch the server process.</dd>
+        </dl>
       </div>
     </section>
 
@@ -662,7 +798,8 @@
       <div class="grid two">
         <article class="panel">
           <h3>Setup commands</h3>
-          <pre>python3 -m venv .venv
+          <pre># Local development
+python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
@@ -670,12 +807,31 @@ python manage.py import_fuel_prices fuel-prices-for-be-assessment.csv --skip-geo
 python manage.py runserver</pre>
         </article>
         <article class="panel">
+          <h3>Docker demo commands</h3>
+          <pre>make docker-build
+make docker-run SPOTTER_SECRET_KEY='replace-this-secret'
+
+# Optional: run with live Census batch geocoding
+make docker-run-import-geocode SPOTTER_SECRET_KEY='replace-this-secret'</pre>
+        </article>
+      </div>
+
+      <div class="grid two" style="margin-top:16px;">
+        <article class="panel">
           <h3>Important assumptions</h3>
           <ul class="list">
             <li>The default vehicle range is 500 miles and the default fuel economy is 10 MPG.</li>
             <li>The planner does not grant free starting fuel; full route gallons are represented in totals.</li>
-            <li>Imported stations must be active and geocoded to participate in planning.</li>
+            <li>Imported stations must be active and have coordinates to participate in planning.</li>
             <li>Live calls depend on OSRM availability unless tests or local code inject a fake router.</li>
+          </ul>
+        </article>
+        <article class="panel">
+          <h3>Verification coverage</h3>
+          <ul class="list">
+            <li>API tests cover success, validation errors, infeasible plans, unresolved locations, and provider failures.</li>
+            <li>Service tests cover station importing, geocoding fallback, route candidates, OSRM handling, and optimizer behavior.</li>
+            <li>The Postman collection mirrors the key demo paths: coordinates, address strings, and custom vehicle settings.</li>
           </ul>
         </article>
       </div>
