@@ -6,18 +6,7 @@ fuel cost for the trip.
 
 ## Demo Walkthrough
 
-<iframe
-  src="https://www.loom.com/embed/5f27a9d24cbb431c9951f8a87ad63386"
-  width="100%"
-  height="420"
-  frameborder="0"
-  webkitallowfullscreen
-  mozallowfullscreen
-  allowfullscreen>
-</iframe>
-
-If your Markdown viewer does not render iframes, watch the walkthrough here:
-<https://www.loom.com/share/5f27a9d24cbb431c9951f8a87ad63386>
+[![Watch the Loom walkthrough](https://cdn.loom.com/sessions/thumbnails/5f27a9d24cbb431c9951f8a87ad63386-with-play.gif)](https://www.loom.com/share/5f27a9d24cbb431c9951f8a87ad63386)
 
 ## Project Links
 
